@@ -325,6 +325,26 @@ pub trait FunctionContext {
 	/// It should only be called once, however calling it more than once
 	/// is harmless and will overwrite the previously set error message.
 	fn register_panic_error_message(&mut self, message: &str);
+	fn virtualization(&mut self) -> &mut dyn Virtualization;
+}
+
+pub trait Virtualization {
+	fn instantiate(
+		&mut self,
+		program: &[u8],
+	) -> Result<sp_std::result::Result<u64, u8>>;
+
+	fn execute(
+		&mut self,
+		instance_id: u64,
+		function: &str,
+		syscall_handler: u32,
+		state_ptr: u32,
+	) -> Result<sp_std::result::Result<(), u8>>;
+
+	fn read_memory(&mut self, instance_id: u64, offset: u32, buf_ptr: u32, buf_len: u32) -> Result<sp_std::result::Result<(), u8>>;
+
+	fn write_memory(&mut self, instance_id: u64, offset: u32, buf_ptr: u32, buf_len: u32) -> Result<sp_std::result::Result<(), u8>>;
 }
 
 if_wasmtime_is_enabled! {

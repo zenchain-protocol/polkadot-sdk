@@ -69,6 +69,12 @@ impl From<ReturnErrorCode> for u32 {
 	}
 }
 
+impl From<ReturnErrorCode> for u64 {
+	fn from(code: ReturnErrorCode) -> u64 {
+		(code as u32).into()
+	}
+}
+
 define_error_codes! {
 	/// The called function trapped and has its state changes reverted.
 	/// In this case no output buffer is returned.

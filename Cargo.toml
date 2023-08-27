@@ -410,6 +410,7 @@ members = [
 	"substrate/primitives/consensus/pow",
 	"substrate/primitives/consensus/sassafras",
 	"substrate/primitives/consensus/slots",
+	"substrate/primitives/virtualization",
 	"substrate/primitives/core",
 	"substrate/primitives/core/fuzz",
 	"substrate/primitives/core/hashing",
