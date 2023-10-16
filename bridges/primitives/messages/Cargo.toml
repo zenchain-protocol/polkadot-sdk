@@ -26,6 +26,7 @@ frame-support = { path = "../../../substrate/frame/support", default-features = 
 sp-core = { path = "../../../substrate/primitives/core", default-features = false }
 sp-std = { path = "../../../substrate/primitives/std", default-features = false }
 sp-io = { path = "../../../substrate/primitives/io", default-features = false }
+sp-runtime = { path = "../../../substrate/primitives/runtime", default-features = false }
 
 [dev-dependencies]
 hex = "0.4"
@@ -42,5 +43,6 @@ std = [
 	"serde/std",
 	"sp-core/std",
 	"sp-io/std",
+	"sp-runtime/std",
 	"sp-std/std"
 ]
