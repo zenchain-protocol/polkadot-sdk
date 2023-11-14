@@ -484,6 +484,7 @@ mod tests {
 		value: u64,
 		data: Vec<u8>,
 		allows_reentry: bool,
+		allows_mutable: bool,
 	}
 
 	#[derive(Debug, PartialEq, Eq)]
@@ -551,8 +552,9 @@ mod tests {
 			value: u64,
 			data: Vec<u8>,
 			allows_reentry: bool,
+			allows_mutable: bool,
 		) -> Result<ExecReturnValue, ExecError> {
-			self.calls.push(CallEntry { to, value, data, allows_reentry });
+			self.calls.push(CallEntry { to, value, data, allows_reentry, allows_mutable });
 			Ok(ExecReturnValue { flags: ReturnFlags::empty(), data: call_return_data() })
 		}
 		fn delegate_call(
@@ -612,8 +614,9 @@ mod tests {
 			let entry = self.storage.entry(key.clone());
 			let result = match (entry, take_old) {
 				(Entry::Vacant(_), _) => WriteOutcome::New,
-				(Entry::Occupied(entry), false) =>
-					WriteOutcome::Overwritten(entry.remove().len() as u32),
+				(Entry::Occupied(entry), false) => {
+					WriteOutcome::Overwritten(entry.remove().len() as u32)
+				},
 				(Entry::Occupied(entry), true) => WriteOutcome::Taken(entry.remove()),
 			};
 			if let Some(value) = value {
@@ -921,7 +924,13 @@ mod tests {
 
 		assert_eq!(
 			&mock_ext.calls,
-			&[CallEntry { to: ALICE, value: 6, data: vec![1, 2, 3, 4], allows_reentry: true }]
+			&[CallEntry {
+				to: ALICE,
+				value: 6,
+				data: vec![1, 2, 3, 4],
+				allows_reentry: true,
+				allows_mutable: true
+			}]
 		);
 	}
 
@@ -1018,7 +1027,13 @@ mod tests {
 
 		assert_eq!(
 			&mock_ext.calls,
-			&[CallEntry { to: ALICE, value: 0x2a, data: input, allows_reentry: false }]
+			&[CallEntry {
+				to: ALICE,
+				value: 0x2a,
+				data: input,
+				allows_reentry: false,
+				allows_mutable: true
+			}]
 		);
 	}
 
@@ -1073,7 +1088,13 @@ mod tests {
 		assert_eq!(result.data, input);
 		assert_eq!(
 			&mock_ext.calls,
-			&[CallEntry { to: ALICE, value: 0x2a, data: input, allows_reentry: true }]
+			&[CallEntry {
+				to: ALICE,
+				value: 0x2a,
+				data: input,
+				allows_reentry: true,
+				allows_mutable: true
+			}]
 		);
 	}
 
@@ -1120,7 +1141,13 @@ mod tests {
 		assert_eq!(result.data, call_return_data());
 		assert_eq!(
 			&mock_ext.calls,
-			&[CallEntry { to: ALICE, value: 0x2a, data: input, allows_reentry: false }]
+			&[CallEntry {
+				to: ALICE,
+				value: 0x2a,
+				data: input,
+				allows_reentry: false,
+				allows_mutable: true
+			}]
 		);
 	}
 
@@ -1361,7 +1388,13 @@ mod tests {
 
 		assert_eq!(
 			&mock_ext.calls,
-			&[CallEntry { to: ALICE, value: 6, data: vec![1, 2, 3, 4], allows_reentry: true }]
+			&[CallEntry {
+				to: ALICE,
+				value: 6,
+				data: vec![1, 2, 3, 4],
+				allows_reentry: true,
+				allows_mutable: true
+			}]
 		);
 	}
 
