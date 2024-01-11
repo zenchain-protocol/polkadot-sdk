@@ -36,8 +36,6 @@ macro_rules! hash_fn {
 	};
 }
 
-// TODO remove cfg once used by all targets
-#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn extract_from_slice(output: &mut &mut [u8], new_len: usize) {
 	debug_assert!(new_len <= output.len());
@@ -45,7 +43,6 @@ fn extract_from_slice(output: &mut &mut [u8], new_len: usize) {
 	*output = &mut tmp[..new_len];
 }
 
-#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn ptr_len_or_sentinel(data: &mut Option<&mut &mut [u8]>) -> (*mut u8, u32) {
 	match data {
@@ -54,7 +51,6 @@ fn ptr_len_or_sentinel(data: &mut Option<&mut &mut [u8]>) -> (*mut u8, u32) {
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
 #[inline(always)]
 fn ptr_or_sentinel(data: &Option<&[u8]>) -> *const u8 {
 	match data {

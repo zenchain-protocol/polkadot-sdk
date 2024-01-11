@@ -109,6 +109,8 @@ pub struct GasMeter<T: Config> {
 	/// separately in order to avoid the loss of precision that happens when converting from
 	/// ref_time to the execution engine unit.
 	executor_consumed: u64,
+	/// Same as `executor_consumed` but we need to track the gas left because of the different API.
+	gas_left_polkavm: u64,
 	_phantom: PhantomData<T>,
 	#[cfg(test)]
 	tokens: Vec<ErasedToken>,
@@ -121,6 +123,10 @@ impl<T: Config> GasMeter<T> {
 			gas_left: gas_limit,
 			gas_left_lowest: gas_limit,
 			executor_consumed: 0,
+			gas_left_polkavm: gas_limit
+				.ref_time()
+				.checked_div(T::Schedule::get().instruction_weights.base as u64)
+				.expect("instruction base weight not being zero was checked at startup; qed"),
 			_phantom: PhantomData,
 			#[cfg(test)]
 			tokens: Vec::new(),
@@ -214,6 +220,21 @@ impl<T: Config> GasMeter<T> {
 		Ok(RefTimeLeft(self.gas_left.ref_time()))
 	}
 
+	pub fn sync_from_executor_polkavm(
+		&mut self,
+		gas_left_polkavm: u64,
+	) -> Result<RefTimeLeft, DispatchError> {
+		let chargable_reftime = self
+			.gas_left_polkavm
+			.saturating_sub(gas_left_polkavm)
+			.saturating_mul(u64::from(T::Schedule::get().instruction_weights.base));
+		self.gas_left_polkavm = gas_left_polkavm;
+		self.gas_left
+			.checked_reduce(Weight::from_parts(chargable_reftime, 0))
+			.ok_or_else(|| Error::<T>::OutOfGas)?;
+		Ok(RefTimeLeft(self.gas_left.ref_time()))
+	}
+
 	/// Hand over the gas metering responsibility from this meter to the executor.
 	///
 	/// Needs to be called when leaving a host function in order to calculate how much
@@ -222,14 +243,15 @@ impl<T: Config> GasMeter<T> {
 	///
 	/// It is important that this does **not** actually sync with the executor. That has
 	/// to be done by the caller.
-	pub fn sync_to_executor(&mut self, before: RefTimeLeft) -> Result<Syncable, DispatchError> {
+	pub fn sync_to_executor(&mut self, before: RefTimeLeft) -> Syncable {
 		let chargable_executor_resource = before
 			.0
 			.saturating_sub(self.gas_left().ref_time())
 			.checked_div(u64::from(T::Schedule::get().instruction_weights.base))
-			.ok_or(Error::<T>::InvalidSchedule)?;
+			.expect("instruction base weight not being zero was checked in startup test; qed");
 		self.executor_consumed.saturating_accrue(chargable_executor_resource);
-		Ok(Syncable(chargable_executor_resource))
+		self.gas_left_polkavm.saturating_reduce(chargable_executor_resource);
+		Syncable(chargable_executor_resource)
 	}
 
 	/// Returns the amount of gas that is required to run the same call.
@@ -248,6 +270,10 @@ impl<T: Config> GasMeter<T> {
 	/// Returns how much gas left from the initial budget.
 	pub fn gas_left(&self) -> Weight {
 		self.gas_left
+	}
+
+	pub fn gas_left_polkavm(&self) -> u64 {
+		self.gas_left_polkavm
 	}
 
 	/// Turn this GasMeter into a DispatchResult that contains the actually used gas.

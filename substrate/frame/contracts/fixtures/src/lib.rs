@@ -27,7 +27,13 @@ where
 	T: frame_system::Config,
 {
 	let out_dir: PathBuf = env!("OUT_DIR").into();
+
+	#[cfg(feature = "riscv")]
+	let fixture_path = out_dir.join(format!("{fixture_name}.polkavm"));
+
+	#[cfg(not(feature = "riscv"))]
 	let fixture_path = out_dir.join(format!("{fixture_name}.wasm"));
+
 	let binary = fs::read(fixture_path)?;
 	let code_hash = T::Hashing::hash(&binary);
 	Ok((binary, code_hash))
