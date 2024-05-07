@@ -143,6 +143,19 @@ build-implementers-guide:
     - mkdir -p artifacts
     - mv polkadot/roadmap/implementers-guide/book artifacts/
 
+build-frame-omni-bencher:
+  stage: build
+  extends:
+    - .docker-env
+    - .common-refs
+    - .run-immediately
+    - .collect-artifacts
+  script:
+    - cargo build --locked --release -p frame-omni-bencher
+    - mkdir -p artifacts
+    - target/release/frame-omni-bencher --version
+    - cp ./target/release/frame-omni-bencher ./artifacts/
+
 build-short-benchmark:
   stage: build
   extends:
