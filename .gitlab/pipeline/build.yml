@@ -275,6 +275,15 @@ build-runtime-contracts:
     - job: build-runtime-collectives
       artifacts: false
 
+build-runtime-people:
+  <<: *build-runtime-template
+  variables:
+    RUNTIME_PATH: "cumulus/parachains/runtimes/people"
+  # this is an artificial job dependency, for pipeline optimization using GitLab's DAGs
+  needs:
+    - job: build-runtime-assets
+      artifacts: false
+
 build-runtime-starters:
   <<: *build-runtime-template
   variables:
