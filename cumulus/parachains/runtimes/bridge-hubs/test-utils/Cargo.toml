@@ -48,7 +48,7 @@ bp-runtime = { path = "../../../../../bridges/primitives/runtime", default-featu
 bp-test-utils = { path = "../../../../../bridges/primitives/test-utils", default-features = false }
 pallet-bridge-grandpa = { path = "../../../../../bridges/modules/grandpa", default-features = false }
 pallet-bridge-parachains = { path = "../../../../../bridges/modules/parachains", default-features = false }
-pallet-bridge-messages = { path = "../../../../../bridges/modules/messages", default-features = false }
+pallet-bridge-messages = { path = "../../../../../bridges/modules/messages", default-features = false, features = ["test-helpers"] }
 pallet-bridge-relayers = { path = "../../../../../bridges/modules/relayers", default-features = false }
 bridge-runtime-common = { path = "../../../../../bridges/bin/runtime-common", default-features = false }
 
