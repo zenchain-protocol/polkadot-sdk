@@ -96,7 +96,7 @@ bp-parachains = { path = "../../../../../bridges/primitives/parachains", default
 bp-polkadot-bulletin = { path = "../../../../../bridges/chains/chain-polkadot-bulletin", default-features = false }
 bp-polkadot-core = { path = "../../../../../bridges/primitives/polkadot-core", default-features = false }
 bp-relayers = { path = "../../../../../bridges/primitives/relayers", default-features = false }
-bp-runtime = { path = "../../../../../bridges/primitives/runtime", default-features = false }
+bp-runtime = { path = "../../../../../bridges/primitives/runtime", default-features = false, features = ["test-helpers"] }
 bp-rococo = { path = "../../../../../bridges/chains/chain-rococo", default-features = false }
 bp-westend = { path = "../../../../../bridges/chains/chain-westend", default-features = false }
 pallet-bridge-grandpa = { path = "../../../../../bridges/modules/grandpa", default-features = false }
