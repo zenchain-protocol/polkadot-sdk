@@ -88,7 +88,6 @@ impl Pallet {
 		let cfg_pattern = vec![];
 
 		let docs = get_doc_literals(&item.attrs);
-
 		Ok(Pallet {
 			is_expanded: true,
 			name,
@@ -98,6 +97,7 @@ impl Pallet {
 			cfg_pattern,
 			pallet_parts,
 			docs,
+			attrs: item.attrs.clone(),
 		})
 	}
 }
