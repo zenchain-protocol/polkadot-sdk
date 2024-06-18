@@ -1004,8 +1004,7 @@ impl InstanceFilter<RuntimeCall> for ProxyType {
 				matches!(
 					c,
 					RuntimeCall::Staking(..) |
-						RuntimeCall::Session(..) |
-						RuntimeCall::Utility(..) |
+						RuntimeCall::Session(..) | RuntimeCall::Utility(..) |
 						RuntimeCall::FastUnstake(..) |
 						RuntimeCall::VoterList(..) |
 						RuntimeCall::NominationPools(..)
@@ -2683,7 +2682,9 @@ mod remote_tests {
 						k,
 					)
 					.map(|_| success = success + 1)
-					.map_err(|e| log::error!(target: "remote_test", "Failed to migrate pool {}: {:?}", k, e));
+					.map_err(
+						|e| log::error!(target: "remote_test", "Failed to migrate pool {}: {:?}", k, e),
+					);
 				}
 			});
 
@@ -2710,8 +2711,9 @@ mod remote_tests {
 					)
 					.map(|_| success = success + 1)
 					.map_err(|e| {
-						// let pool_member = pallet_nomination_pools::PoolMembers::<Runtime>::get(&k);
-						// let ledger = pallet_staking::Ledger::<Runtime>::get(&k);
+						// let pool_member =
+						// pallet_nomination_pools::PoolMembers::<Runtime>::get(&k); let ledger =
+						// pallet_staking::Ledger::<Runtime>::get(&k);
 						log::error!(target: "remote_test", "Failed to migrate member {}: {:?}", k, e);
 						log::error!(target: "remote_test", "member free balance {:?}", Balances::free_balance(&k));
 					});
