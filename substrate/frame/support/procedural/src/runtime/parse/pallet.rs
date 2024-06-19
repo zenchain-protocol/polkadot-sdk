@@ -46,7 +46,7 @@ impl Pallet {
 				return Err(Error::new(
 					attr_span,
 					"Invalid pallet declaration, expected a path or a trait object",
-				))
+				));
 			};
 		}
 
@@ -88,6 +88,7 @@ impl Pallet {
 		let cfg_pattern = vec![];
 
 		let docs = get_doc_literals(&item.attrs);
+
 		Ok(Pallet {
 			is_expanded: true,
 			name,
