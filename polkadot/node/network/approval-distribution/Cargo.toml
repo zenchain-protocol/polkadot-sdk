@@ -17,6 +17,8 @@ polkadot-node-subsystem = { path = "../../subsystem" }
 polkadot-node-subsystem-util = { path = "../../subsystem-util" }
 polkadot-primitives = { path = "../../../primitives" }
 polkadot-node-jaeger = { path = "../../jaeger" }
+polkadot-node-core-approval-voting = { path = "../../core/approval-voting"}
+
 rand = "0.8"
 itertools = "0.11"
 
