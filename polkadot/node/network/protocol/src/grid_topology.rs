@@ -278,6 +278,18 @@ impl GridNeighbors {
 			.collect::<Vec<_>>()
 	}
 
+	/// Returns the the Peer Ids for the required routing.
+	pub fn peers_to_route(&self, required_routing: RequiredRouting) -> Vec<PeerId> {
+		match required_routing {
+			RequiredRouting::All =>
+				self.peers_x.iter().chain(self.peers_y.iter()).copied().collect(),
+			RequiredRouting::GridX => self.peers_x.iter().copied().collect(),
+			RequiredRouting::GridY => self.peers_y.iter().copied().collect(),
+			RequiredRouting::GridXY =>
+				self.peers_x.iter().chain(self.peers_y.iter()).copied().collect(),
+			RequiredRouting::None | RequiredRouting::PendingTopology => Vec::new(),
+		}
+	}
 	/// A convenience method that returns total number of peers in the topology
 	pub fn len(&self) -> usize {
 		self.peers_x.len().saturating_add(self.peers_y.len())
@@ -311,6 +323,14 @@ impl SessionGridTopologyEntry {
 	/// Tells if a given peer id is validator in a session
 	pub fn is_validator(&self, peer: &PeerId) -> bool {
 		self.topology.is_validator(peer)
+	}
+
+	/// Returns peers to route based on the required routing
+	pub fn peers_to_route(&self, required_routing: RequiredRouting) -> Vec<PeerId> {
+		if required_routing == RequiredRouting::All {
+			return self.topology.peer_ids.iter().copied().collect()
+		}
+		self.local_neighbors.peers_to_route(required_routing)
 	}
 
 	/// Updates the known peer ids for the passed authorities ids.
@@ -523,6 +543,10 @@ impl RandomRouting {
 	/// Increase number of messages being sent
 	pub fn inc_sent(&mut self) {
 		self.sent += 1
+	}
+
+	pub fn is_complete(&self) -> bool {
+		self.sent >= self.target
 	}
 }
 

@@ -1510,6 +1510,21 @@ impl State {
 		let required_routing = topology.map_or(RequiredRouting::PendingTopology, |t| {
 			t.local_grid_neighbors().required_routing_by_index(validator_index, local)
 		});
+		// Peers that we will send the assignment to.
+		let mut peers = Vec::new();
+
+		let peers_to_route_to = topology
+			.as_ref()
+			.map(|t| t.peers_to_route(required_routing))
+			.unwrap_or_default();
+
+		for peer in peers_to_route_to {
+			if entry.known_by.get(&peer).is_none() {
+				continue
+			}
+
+			peers.push(peer);
+		}
 
 		// All the peers that know the relay chain block.
 		let peers_to_filter = entry.known_by();
@@ -1535,20 +1550,9 @@ impl State {
 		let n_peers_total = self.peer_views.len();
 		let source_peer = source.peer_id();
 
-		// Peers that we will send the assignment to.
-		let mut peers = Vec::new();
-
 		// Filter destination peers
 		for peer in peers_to_filter.into_iter() {
 			if Some(peer) == source_peer {
-				continue
-			}
-
-			if let Some(true) = topology
-				.as_ref()
-				.map(|t| t.local_grid_neighbors().route_to_peer(required_routing, &peer))
-			{
-				peers.push(peer);
 				continue
 			}
 
@@ -1565,6 +1569,10 @@ impl State {
 			if route_random {
 				approval_entry.routing_info_mut().mark_randomly_sent(peer);
 				peers.push(peer);
+			}
+
+			if approval_entry.routing_info().random_routing.is_complete() {
+				break
 			}
 		}
 
