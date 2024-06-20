@@ -13010,6 +13010,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "polkadot-node-core-approval-voting-parallel"
+version = "7.0.0"
+dependencies = [
+ "assert_matches",
+ "async-trait",
+ "bitvec",
+ "derive_more",
+ "env_logger 0.11.3",
+ "futures",
+ "futures-timer",
+ "itertools 0.11.0",
+ "kvdb",
+ "kvdb-memorydb",
+ "log",
+ "merlin",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "polkadot-approval-distribution",
+ "polkadot-node-core-approval-voting",
+ "polkadot-node-jaeger",
+ "polkadot-node-metrics",
+ "polkadot-node-network-protocol",
+ "polkadot-node-primitives",
+ "polkadot-node-subsystem",
+ "polkadot-node-subsystem-test-helpers",
+ "polkadot-node-subsystem-util",
+ "polkadot-overseer",
+ "polkadot-primitives",
+ "polkadot-primitives-test-helpers",
+ "polkadot-subsystem-bench",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+ "sc-keystore",
+ "schnellru",
+ "schnorrkel 0.11.4",
+ "sp-application-crypto",
+ "sp-consensus",
+ "sp-consensus-babe",
+ "sp-consensus-slots",
+ "sp-core",
+ "sp-keyring",
+ "sp-keystore",
+ "sp-runtime",
+ "thiserror",
+ "tracing-gum",
+]
+
+[[package]]
 name = "polkadot-node-core-av-store"
 version = "7.0.0"
 dependencies = [
@@ -14467,6 +14516,7 @@ dependencies = [
  "polkadot-network-bridge",
  "polkadot-node-collation-generation",
  "polkadot-node-core-approval-voting",
+ "polkadot-node-core-approval-voting-parallel",
  "polkadot-node-core-av-store",
  "polkadot-node-core-backing",
  "polkadot-node-core-bitfield-signing",
@@ -14629,6 +14679,7 @@ dependencies = [
  "polkadot-availability-recovery",
  "polkadot-erasure-coding",
  "polkadot-node-core-approval-voting",
+ "polkadot-node-core-approval-voting-parallel",
  "polkadot-node-core-av-store",
  "polkadot-node-core-chain-api",
  "polkadot-node-metrics",
