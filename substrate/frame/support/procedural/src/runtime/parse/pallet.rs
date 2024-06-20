@@ -98,7 +98,6 @@ impl Pallet {
 			cfg_pattern,
 			pallet_parts,
 			docs,
-			attrs: item.attrs.clone(),
 		})
 	}
 }
