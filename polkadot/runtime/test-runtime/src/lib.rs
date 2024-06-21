@@ -342,6 +342,7 @@ impl pallet_staking::Config for Runtime {
 	type UnixTime = Timestamp;
 	type CurrencyToVote = polkadot_runtime_common::CurrencyToVote;
 	type RewardRemainder = ();
+	type RuntimeHoldReason = RuntimeHoldReason;
 	type RuntimeEvent = RuntimeEvent;
 	type Slash = ();
 	type Reward = ();
