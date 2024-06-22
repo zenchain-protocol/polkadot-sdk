@@ -30,7 +30,7 @@
 //! To configure a migration to `v11` for a runtime using `v10` of pallet-contracts on the chain,
 //! you would set the `Migrations` type as follows:
 //!
-//! ```
+//! ```ignore
 //! use pallet_contracts::migration::{v10, v11};
 //! # pub enum Runtime {};
 //! # struct Currency;
@@ -57,14 +57,6 @@
 //! While the migration is in progress, all dispatchables except `migrate`, are blocked, and returns
 //! a `MigrationInProgress` error.
 
-pub mod v09;
-pub mod v10;
-pub mod v11;
-pub mod v12;
-pub mod v13;
-pub mod v14;
-pub mod v15;
-pub mod v16;
 include!(concat!(env!("OUT_DIR"), "/migration_codegen.rs"));
 
 use crate::{weights::WeightInfo, Config, Error, MigrationInProgress, Pallet, Weight, LOG_TARGET};

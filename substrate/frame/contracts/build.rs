@@ -17,36 +17,42 @@
 
 use std::io::Write;
 
+/// We start with version 2 instead of 0 when adding the pallet.
+///
+/// Because otherwise we can't test any migrations since they require the storage version
+/// to be lower than the pallet version in order to be triggerd. With the pallet version
+/// at the minimum (0) this would not work.
+const LOWEST_STORAGE_VERSION: u16 = 2;
+
 /// Get the latest migration version.
 ///
 /// Find the highest version number from the available migration files.
 /// Each migration file should follow the naming convention `vXX.rs`, where `XX` is the version
 /// number.
 fn get_latest_version() -> u16 {
-	std::fs::read_dir("src/migration")
-		.expect("Folder `src/migration` not found.")
-		.filter_map(|entry| {
-			let file_name = entry.as_ref().ok()?.file_name();
-			let file_name = file_name.to_str()?;
-			if file_name.starts_with('v') && file_name.ends_with(".rs") {
-				let version = &file_name[1..&file_name.len() - 3];
-				let version = version.parse::<u16>().ok()?;
+	let Ok(dir) = std::fs::read_dir("src/migration") else { return LOWEST_STORAGE_VERSION };
+	dir.filter_map(|entry| {
+		let file_name = entry.as_ref().ok()?.file_name();
+		let file_name = file_name.to_str()?;
+		if file_name.starts_with('v') && file_name.ends_with(".rs") {
+			let version = &file_name[1..&file_name.len() - 3];
+			let version = version.parse::<u16>().ok()?;
 
-				// Ensure that the version matches the one defined in the file.
-				let path = entry.unwrap().path();
-				let file_content = std::fs::read_to_string(&path).ok()?;
-				assert!(
-					file_content.contains(&format!("const VERSION: u16 = {}", version)),
-					"Invalid MigrationStep::VERSION in {:?}",
-					path
-				);
+			// Ensure that the version matches the one defined in the file.
+			let path = entry.unwrap().path();
+			let file_content = std::fs::read_to_string(&path).ok()?;
+			assert!(
+				file_content.contains(&format!("const VERSION: u16 = {}", version)),
+				"Invalid MigrationStep::VERSION in {:?}",
+				path
+			);
 
-				return Some(version)
-			}
-			None
-		})
-		.max()
-		.expect("Failed to find any files matching the 'src/migration/vxx.rs' pattern.")
+			return Some(version)
+		}
+		None
+	})
+	.max()
+	.unwrap_or(LOWEST_STORAGE_VERSION)
 }
 
 /// Generates a module that exposes the latest migration version, and the benchmark migrations type.

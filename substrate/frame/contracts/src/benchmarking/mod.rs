@@ -28,9 +28,7 @@ use self::{
 };
 use crate::{
 	exec::{Key, SeedOf},
-	migration::{
-		codegen::LATEST_MIGRATION_VERSION, v09, v10, v11, v12, v13, v14, v15, v16, MigrationStep,
-	},
+	migration::codegen::LATEST_MIGRATION_VERSION,
 	wasm::BenchEnv,
 	Pallet as Contracts, *,
 };
@@ -217,135 +215,6 @@ mod benchmarks {
 			ContractInfo::<T>::process_deletion_queue_batch(&mut WeightMeter::new())
 		}
 
-		Ok(())
-	}
-
-	// This benchmarks the v9 migration step (update codeStorage).
-	#[benchmark(pov_mode = Measured)]
-	fn v9_migration_step(c: Linear<0, { T::MaxCodeLen::get() }>) {
-		v09::store_old_dummy_code::<T>(c as usize);
-		let mut m = v09::Migration::<T>::default();
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-	}
-
-	// This benchmarks the v10 migration step (use dedicated deposit_account).
-	#[benchmark(pov_mode = Measured)]
-	fn v10_migration_step() -> Result<(), BenchmarkError> {
-		let contract =
-			<Contract<T>>::with_caller(whitelisted_caller(), WasmModule::dummy(), vec![])?;
-
-		v10::store_old_contract_info::<T, pallet_balances::Pallet<T>>(
-			contract.account_id.clone(),
-			contract.info()?,
-		);
-		let mut m = v10::Migration::<T, pallet_balances::Pallet<T>>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-
-		Ok(())
-	}
-
-	// This benchmarks the v11 migration step (Don't rely on reserved balances keeping an account
-	// alive).
-	#[benchmark(pov_mode = Measured)]
-	fn v11_migration_step(k: Linear<0, 1024>) {
-		v11::fill_old_queue::<T>(k as usize);
-		let mut m = v11::Migration::<T>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-	}
-
-	// This benchmarks the v12 migration step (Move `OwnerInfo` to `CodeInfo`,
-	// add `determinism` field to the latter, clear `CodeStorage`
-	// and repay deposits).
-	#[benchmark(pov_mode = Measured)]
-	fn v12_migration_step(c: Linear<0, { T::MaxCodeLen::get() }>) {
-		v12::store_old_dummy_code::<T, pallet_balances::Pallet<T>>(
-			c as usize,
-			account::<T::AccountId>("account", 0, 0),
-		);
-		let mut m = v12::Migration::<T, pallet_balances::Pallet<T>>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-	}
-
-	// This benchmarks the v13 migration step (Add delegate_dependencies field).
-	#[benchmark(pov_mode = Measured)]
-	fn v13_migration_step() -> Result<(), BenchmarkError> {
-		let contract =
-			<Contract<T>>::with_caller(whitelisted_caller(), WasmModule::dummy(), vec![])?;
-
-		v13::store_old_contract_info::<T>(contract.account_id.clone(), contract.info()?);
-		let mut m = v13::Migration::<T>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-		Ok(())
-	}
-
-	// This benchmarks the v14 migration step (Move code owners' reserved balance to be held
-	// instead).
-	#[benchmark(pov_mode = Measured)]
-	fn v14_migration_step() {
-		let account = account::<T::AccountId>("account", 0, 0);
-		T::Currency::set_balance(&account, caller_funding::<T>());
-		v14::store_dummy_code::<T, pallet_balances::Pallet<T>>(account);
-		let mut m = v14::Migration::<T, pallet_balances::Pallet<T>>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-	}
-
-	// This benchmarks the v15 migration step (remove deposit account).
-	#[benchmark(pov_mode = Measured)]
-	fn v15_migration_step() -> Result<(), BenchmarkError> {
-		let contract =
-			<Contract<T>>::with_caller(whitelisted_caller(), WasmModule::dummy(), vec![])?;
-
-		v15::store_old_contract_info::<T>(contract.account_id.clone(), contract.info()?);
-		let mut m = v15::Migration::<T>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-
-		Ok(())
-	}
-
-	// This benchmarks the v16 migration step (Remove ED from base_deposit).
-	#[benchmark(pov_mode = Measured)]
-	fn v16_migration_step() -> Result<(), BenchmarkError> {
-		let contract =
-			<Contract<T>>::with_caller(whitelisted_caller(), WasmModule::dummy(), vec![])?;
-
-		let info = contract.info()?;
-		let base_deposit = v16::store_old_contract_info::<T>(contract.account_id.clone(), &info);
-		let mut m = v16::Migration::<T>::default();
-
-		#[block]
-		{
-			m.step(&mut WeightMeter::new());
-		}
-		let ed = Pallet::<T>::min_balance();
-		let info = v16::ContractInfoOf::<T>::get(&contract.account_id).unwrap();
-		assert_eq!(info.storage_base_deposit, base_deposit - ed);
 		Ok(())
 	}
 

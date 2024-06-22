@@ -239,7 +239,7 @@ pub mod pallet {
 	use sp_runtime::Perbill;
 
 	/// The in-code storage version.
-	pub(crate) const STORAGE_VERSION: StorageVersion = StorageVersion::new(16);
+	pub(crate) const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
 	#[pallet::pallet]
 	#[pallet::storage_version(STORAGE_VERSION)]
@@ -426,7 +426,7 @@ pub mod pallet {
 		/// The sequence of migration steps that will be applied during a migration.
 		///
 		/// # Examples
-		/// ```
+		/// ```ignore
 		/// use pallet_contracts::migration::{v10, v11};
 		/// # struct Runtime {};
 		/// # struct Currency {};
@@ -434,7 +434,7 @@ pub mod pallet {
 		/// ```
 		///
 		/// If you have a single migration step, you can use a tuple with a single element:
-		/// ```
+		/// ```ignore
 		/// use pallet_contracts::migration::v10;
 		/// # struct Runtime {};
 		/// # struct Currency {};
