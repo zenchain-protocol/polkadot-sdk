@@ -21,8 +21,7 @@ use crate::{
 	primitives::{ExecReturnValue, StorageDeposit},
 	storage::{self, meter::Diff, WriteOutcome},
 	BalanceOf, CodeHash, CodeInfo, CodeInfoOf, Config, ContractInfo, ContractInfoOf,
-	DebugBufferVec, Determinism, Error, Event, Nonce, Origin, Pallet as Contracts, Schedule,
-	LOG_TARGET,
+	DebugBufferVec, Determinism, Error, Event, Origin, Pallet as Contracts, Schedule, LOG_TARGET,
 };
 use frame_support::{
 	crypto::ecdsa::ECDSAExt,
@@ -37,7 +36,7 @@ use frame_support::{
 	weights::Weight,
 	Blake2_128Concat, BoundedVec, StorageHasher,
 };
-use frame_system::{pallet_prelude::BlockNumberFor, RawOrigin};
+use frame_system::{pallet_prelude::BlockNumberFor, Pallet as System, RawOrigin};
 use smallvec::{Array, SmallVec};
 use sp_core::{
 	ecdsa::Public as ECDSAPublic,
@@ -319,9 +318,6 @@ pub trait Ext: sealing::Sealed {
 	/// A value of 0 means it does not exist on the call stack.
 	fn account_reentrance_count(&self, account_id: &AccountIdOf<Self::T>) -> u32;
 
-	/// Returns a nonce that is incremented for every instantiated contract.
-	fn nonce(&mut self) -> u64;
-
 	/// Increment the reference count of a of a stored code by one.
 	///
 	/// # Errors
@@ -454,10 +450,6 @@ pub struct Stack<'a, T: Config, E> {
 	timestamp: MomentOf<T>,
 	/// The block number at the time of call stack instantiation.
 	block_number: BlockNumberFor<T>,
-	/// The nonce is cached here when accessed. It is written back when the call stack
-	/// finishes executing. Please refer to [`Nonce`] to a description of
-	/// the nonce itself.
-	nonce: Option<u64>,
 	/// The actual call stack. One entry per nested contract called/instantiated.
 	/// This does **not** include the [`Self::first_frame`].
 	frames: SmallVec<T::CallStack>,
@@ -529,8 +521,6 @@ enum FrameArgs<'a, T: Config, E> {
 	Instantiate {
 		/// The contract or signed origin which instantiates the new contract.
 		sender: T::AccountId,
-		/// The nonce that should be used to derive a new trie id for the contract.
-		nonce: u64,
 		/// The executable whose `deploy` function is run.
 		executable: E,
 		/// A salt used in the contract address derivation of the new contract.
@@ -718,7 +708,6 @@ where
 		let (mut stack, executable) = Self::new(
 			FrameArgs::Instantiate {
 				sender: origin.clone(),
-				nonce: <Nonce<T>>::get().wrapping_add(1),
 				executable,
 				salt,
 				input_data: input_data.as_ref(),
@@ -770,7 +759,7 @@ where
 		debug_message: Option<&'a mut DebugBufferVec<T>>,
 		determinism: Determinism,
 	) -> Result<(Self, E), ExecError> {
-		let (first_frame, executable, nonce) = Self::new_frame(
+		let (first_frame, executable) = Self::new_frame(
 			args,
 			value,
 			gas_meter,
@@ -788,7 +777,6 @@ where
 			storage_meter,
 			timestamp: T::Time::now(),
 			block_number: <frame_system::Pallet<T>>::block_number(),
-			nonce,
 			first_frame,
 			frames: Default::default(),
 			debug_message,
@@ -812,43 +800,40 @@ where
 		deposit_limit: BalanceOf<T>,
 		determinism: Determinism,
 		read_only: bool,
-	) -> Result<(Frame<T>, E, Option<u64>), ExecError> {
-		let (account_id, contract_info, executable, delegate_caller, entry_point, nonce) =
-			match frame_args {
-				FrameArgs::Call { dest, cached_info, delegated_call } => {
-					let contract = if let Some(contract) = cached_info {
-						contract
+	) -> Result<(Frame<T>, E), ExecError> {
+		let (account_id, contract_info, executable, delegate_caller, entry_point) = match frame_args
+		{
+			FrameArgs::Call { dest, cached_info, delegated_call } => {
+				let contract = if let Some(contract) = cached_info {
+					contract
+				} else {
+					<ContractInfoOf<T>>::get(&dest).ok_or(<Error<T>>::ContractNotFound)?
+				};
+
+				let (executable, delegate_caller) =
+					if let Some(DelegatedCall { executable, caller }) = delegated_call {
+						(executable, Some(caller))
 					} else {
-						<ContractInfoOf<T>>::get(&dest).ok_or(<Error<T>>::ContractNotFound)?
+						(E::from_storage(contract.code_hash, gas_meter)?, None)
 					};
 
-					let (executable, delegate_caller) =
-						if let Some(DelegatedCall { executable, caller }) = delegated_call {
-							(executable, Some(caller))
-						} else {
-							(E::from_storage(contract.code_hash, gas_meter)?, None)
-						};
-
-					(dest, contract, executable, delegate_caller, ExportedFunction::Call, None)
-				},
-				FrameArgs::Instantiate { sender, nonce, executable, salt, input_data } => {
-					let account_id = Contracts::<T>::contract_address(
-						&sender,
-						&executable.code_hash(),
-						input_data,
-						salt,
-					);
-					let contract = ContractInfo::new(&account_id, nonce, *executable.code_hash())?;
-					(
-						account_id,
-						contract,
-						executable,
-						None,
-						ExportedFunction::Constructor,
-						Some(nonce),
-					)
-				},
-			};
+				(dest, contract, executable, delegate_caller, ExportedFunction::Call)
+			},
+			FrameArgs::Instantiate { sender, executable, salt, input_data } => {
+				let account_id = Contracts::<T>::contract_address(
+					&sender,
+					&executable.code_hash(),
+					input_data,
+					salt,
+				);
+				let contract = ContractInfo::new(
+					&account_id,
+					<System<T>>::account_nonce(&sender),
+					*executable.code_hash(),
+				)?;
+				(account_id, contract, executable, None, ExportedFunction::Constructor)
+			},
+		};
 
 		// `Relaxed` will only be ever set in case of off-chain execution.
 		// Instantiations are never allowed even when executing off-chain.
@@ -871,7 +856,7 @@ where
 			read_only,
 		};
 
-		Ok((frame, executable, nonce))
+		Ok((frame, executable))
 	}
 
 	/// Create a subsequent nested frame.
@@ -901,7 +886,7 @@ where
 		let frame = top_frame_mut!(self);
 		let nested_gas = &mut frame.nested_gas;
 		let nested_storage = &mut frame.nested_storage;
-		let (frame, executable, _) = Self::new_frame(
+		let (frame, executable) = Self::new_frame(
 			frame_args,
 			value_transferred,
 			nested_gas,
@@ -937,6 +922,9 @@ where
 					frame.contract_info.get(&frame.account_id),
 					executable.code_info(),
 				)?;
+				// Needs to be incremented before calling into the code so that it is visible
+				// in case of recursion.
+				<System<T>>::inc_account_nonce(self.caller().account_id()?);
 			}
 
 			// Every non delegate call or instantiate also optionally transfers the balance.
@@ -1052,11 +1040,6 @@ where
 	/// This is called after running the current frame. It commits cached values to storage
 	/// and invalidates all stale references to it that might exist further down the call stack.
 	fn pop_frame(&mut self, persist: bool) {
-		// Revert changes to the nonce in case of a failed instantiation.
-		if !persist && self.top_frame().entry_point == ExportedFunction::Constructor {
-			self.nonce.as_mut().map(|c| *c = c.wrapping_sub(1));
-		}
-
 		// Pop the current frame from the stack and return it in case it needs to interact
 		// with duplicates that might exist on the stack.
 		// A `None` means that we are returning from the `first_frame`.
@@ -1124,9 +1107,6 @@ where
 			);
 			if let Some(contract) = contract {
 				<ContractInfoOf<T>>::insert(&self.first_frame.account_id, contract);
-			}
-			if let Some(nonce) = self.nonce {
-				<Nonce<T>>::set(nonce);
 			}
 		}
 	}
@@ -1199,13 +1179,6 @@ where
 	/// Returns whether the specified contract allows to be reentered right now.
 	fn allows_reentry(&self, id: &AccountIdOf<T>) -> bool {
 		!self.frames().any(|f| &f.account_id == id && !f.allows_reentry)
-	}
-
-	/// Increments and returns the next nonce. Pulls it from storage if it isn't in cache.
-	fn next_nonce(&mut self) -> u64 {
-		let next = self.nonce().wrapping_add(1);
-		self.nonce = Some(next);
-		next
 	}
 }
 
@@ -1300,11 +1273,10 @@ where
 		salt: &[u8],
 	) -> Result<(AccountIdOf<T>, ExecReturnValue), ExecError> {
 		let executable = E::from_storage(code_hash, self.gas_meter_mut())?;
-		let nonce = self.next_nonce();
+		let sender = &self.top_frame().account_id;
 		let executable = self.push_frame(
 			FrameArgs::Instantiate {
-				sender: self.top_frame().account_id.clone(),
-				nonce,
+				sender: sender.clone(),
 				executable,
 				salt,
 				input_data: input_data.as_ref(),
@@ -1554,16 +1526,6 @@ where
 		self.frames()
 			.filter(|f| f.delegate_caller.is_none() && &f.account_id == account_id)
 			.count() as u32
-	}
-
-	fn nonce(&mut self) -> u64 {
-		if let Some(current) = self.nonce {
-			current
-		} else {
-			let current = <Nonce<T>>::get();
-			self.nonce = Some(current);
-			current
-		}
 	}
 
 	fn increment_refcount(code_hash: CodeHash<Self::T>) -> DispatchResult {
@@ -3326,6 +3288,9 @@ mod tests {
 			exec_success()
 		});
 		let succ_succ_code = MockLoader::insert(Constructor, move |ctx, _| {
+			let alice_nonce = System::account_nonce(&ALICE);
+			assert_eq!(System::account_nonce(ctx.ext.address()), 0);
+			assert_eq!(ctx.ext.caller().account_id().unwrap(), &ALICE);
 			let (account_id, _) = ctx
 				.ext
 				.instantiate(
@@ -3338,18 +3303,26 @@ mod tests {
 				)
 				.unwrap();
 
+			assert_eq!(System::account_nonce(&ALICE), alice_nonce);
+			assert_eq!(System::account_nonce(ctx.ext.address()), 1);
+			assert_eq!(System::account_nonce(&account_id), 0);
+
 			// a plain call should not influence the account counter
 			ctx.ext
 				.call(
 					Weight::zero(),
 					BalanceOf::<Test>::zero(),
-					account_id,
+					account_id.clone(),
 					0,
 					vec![],
 					false,
 					false,
 				)
 				.unwrap();
+
+			assert_eq!(System::account_nonce(ALICE), alice_nonce);
+			assert_eq!(System::account_nonce(ctx.ext.address()), 1);
+			assert_eq!(System::account_nonce(&account_id), 0);
 
 			exec_success()
 		});
@@ -3370,10 +3343,12 @@ mod tests {
 				let succ_succ_executable =
 					MockExecutable::from_storage(succ_succ_code, &mut gas_meter).unwrap();
 				set_balance(&ALICE, min_balance * 10_000);
-				let contract_origin = Origin::from_account_id(ALICE);
+				set_balance(&BOB, min_balance * 10_000);
+				let contract_origin = Origin::from_account_id(BOB);
 				let mut storage_meter =
 					storage::meter::Meter::new(&contract_origin, None, min_balance * 100).unwrap();
 
+				// fail should not increment
 				MockStack::run_instantiate(
 					ALICE,
 					fail_executable,
@@ -3386,7 +3361,7 @@ mod tests {
 					None,
 				)
 				.ok();
-				assert_eq!(<Nonce<Test>>::get(), 0);
+				assert_eq!(System::account_nonce(&ALICE), 0);
 
 				assert_ok!(MockStack::run_instantiate(
 					ALICE,
@@ -3399,7 +3374,7 @@ mod tests {
 					&[],
 					None,
 				));
-				assert_eq!(<Nonce<Test>>::get(), 1);
+				assert_eq!(System::account_nonce(&ALICE), 1);
 
 				assert_ok!(MockStack::run_instantiate(
 					ALICE,
@@ -3412,7 +3387,7 @@ mod tests {
 					&[],
 					None,
 				));
-				assert_eq!(<Nonce<Test>>::get(), 2);
+				assert_eq!(System::account_nonce(&ALICE), 2);
 
 				assert_ok!(MockStack::run_instantiate(
 					ALICE,
@@ -3425,7 +3400,7 @@ mod tests {
 					&[],
 					None,
 				));
-				assert_eq!(<Nonce<Test>>::get(), 4);
+				assert_eq!(System::account_nonce(&ALICE), 3);
 			});
 	}
 
@@ -3854,72 +3829,6 @@ mod tests {
 			);
 			assert_matches!(result, Ok(_));
 		});
-	}
-
-	#[test]
-	fn nonce_api_works() {
-		let fail_code = MockLoader::insert(Constructor, |_, _| exec_trapped());
-		let success_code = MockLoader::insert(Constructor, |_, _| exec_success());
-		let code_hash = MockLoader::insert(Call, move |ctx, _| {
-			// It is set to one when this contract was instantiated by `place_contract`
-			assert_eq!(ctx.ext.nonce(), 1);
-			// Should not change without any instantiation in-between
-			assert_eq!(ctx.ext.nonce(), 1);
-			// Should not change with a failed instantiation
-			assert_err!(
-				ctx.ext.instantiate(
-					Weight::zero(),
-					BalanceOf::<Test>::zero(),
-					fail_code,
-					0,
-					vec![],
-					&[],
-				),
-				ExecError {
-					error: <Error<Test>>::ContractTrapped.into(),
-					origin: ErrorOrigin::Callee
-				}
-			);
-			assert_eq!(ctx.ext.nonce(), 1);
-			// Successful instantiation increments
-			ctx.ext
-				.instantiate(
-					Weight::zero(),
-					BalanceOf::<Test>::zero(),
-					success_code,
-					0,
-					vec![],
-					&[],
-				)
-				.unwrap();
-			assert_eq!(ctx.ext.nonce(), 2);
-			exec_success()
-		});
-
-		ExtBuilder::default()
-			.with_code_hashes(MockLoader::code_hashes())
-			.build()
-			.execute_with(|| {
-				let min_balance = <Test as Config>::Currency::minimum_balance();
-				let schedule = <Test as Config>::Schedule::get();
-				let mut gas_meter = GasMeter::<Test>::new(GAS_LIMIT);
-				set_balance(&ALICE, min_balance * 1000);
-				place_contract(&BOB, code_hash);
-				let contract_origin = Origin::from_account_id(ALICE);
-				let mut storage_meter =
-					storage::meter::Meter::new(&contract_origin, None, 0).unwrap();
-				assert_ok!(MockStack::run_call(
-					contract_origin,
-					BOB,
-					&mut gas_meter,
-					&mut storage_meter,
-					&schedule,
-					0,
-					vec![],
-					None,
-					Determinism::Enforced
-				));
-			});
 	}
 
 	/// This works even though random interface is deprecated, as the check to ban deprecated

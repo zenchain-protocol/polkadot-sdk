@@ -236,8 +236,6 @@ pub enum RuntimeCosts {
 	ReentranceCount,
 	/// Weight of calling `account_reentrance_count`
 	AccountReentranceCount,
-	/// Weight of calling `instantiation_nonce`
-	InstantiationNonce,
 	/// Weight of calling `lock_delegate_dependency`
 	LockDelegateDependency,
 	/// Weight of calling `unlock_delegate_dependency`
@@ -313,7 +311,6 @@ impl<T: Config> Token<T> for RuntimeCosts {
 			EcdsaToEthAddress => T::WeightInfo::seal_ecdsa_to_eth_address(),
 			ReentranceCount => T::WeightInfo::seal_reentrance_count(),
 			AccountReentranceCount => T::WeightInfo::seal_account_reentrance_count(),
-			InstantiationNonce => T::WeightInfo::seal_instantiation_nonce(),
 			LockDelegateDependency => T::WeightInfo::lock_delegate_dependency(),
 			UnlockDelegateDependency => T::WeightInfo::unlock_delegate_dependency(),
 		}
@@ -2280,13 +2277,6 @@ pub mod env {
 		let account_id: <<E as Ext>::T as frame_system::Config>::AccountId =
 			ctx.read_sandbox_memory_as(memory, account_ptr)?;
 		Ok(ctx.ext.account_reentrance_count(&account_id))
-	}
-
-	/// Returns a nonce that is unique per contract instantiation.
-	/// See [`pallet_contracts_uapi::HostFn::instantiation_nonce`].
-	fn instantiation_nonce(ctx: _, _memory: _) -> Result<u64, TrapReason> {
-		ctx.charge_gas(RuntimeCosts::InstantiationNonce)?;
-		Ok(ctx.ext.nonce())
 	}
 
 	/// Adds a new delegate dependency to the contract.

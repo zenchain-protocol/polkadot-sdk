@@ -1565,19 +1565,6 @@ mod benchmarks {
 		assert_eq!(result.unwrap(), 0);
 	}
 
-	#[benchmark(pov_mode = Measured)]
-	fn seal_instantiation_nonce() {
-		build_runtime!(runtime, memory: []);
-
-		let result;
-		#[block]
-		{
-			result = BenchEnv::seal0_instantiation_nonce(&mut runtime, &mut memory);
-		}
-
-		assert_eq!(result.unwrap(), 1);
-	}
-
 	// We load `i64` values from random linear memory locations and store the loaded
 	// values back into yet another random linear memory location.
 	// The random addresses are uniformly distributed across the entire span of the linear memory.

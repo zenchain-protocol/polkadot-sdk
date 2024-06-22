@@ -100,19 +100,15 @@ pub mod test_utils {
 	use super::{Contracts, DepositPerByte, DepositPerItem, Test};
 	use crate::{
 		exec::AccountIdOf, BalanceOf, CodeHash, CodeInfo, CodeInfoOf, Config, ContractInfo,
-		ContractInfoOf, Nonce, PristineCode,
+		ContractInfoOf, PristineCode,
 	};
 	use codec::{Encode, MaxEncodedLen};
 	use frame_support::traits::fungible::{InspectHold, Mutate};
 
 	pub fn place_contract(address: &AccountIdOf<Test>, code_hash: CodeHash<Test>) {
-		let nonce = <Nonce<Test>>::mutate(|counter| {
-			*counter += 1;
-			*counter
-		});
 		set_balance(address, Contracts::min_balance() * 10);
 		<CodeInfoOf<Test>>::insert(code_hash, CodeInfo::new(address.clone()));
-		let contract = <ContractInfo<Test>>::new(&address, nonce, code_hash).unwrap();
+		let contract = <ContractInfo<Test>>::new(&address, 0, code_hash).unwrap();
 		<ContractInfoOf<Test>>::insert(address, contract);
 	}
 	pub fn set_balance(who: &AccountIdOf<Test>, amount: u64) {

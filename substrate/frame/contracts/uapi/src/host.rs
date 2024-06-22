@@ -532,12 +532,6 @@ pub trait HostFn {
 		salt: &[u8],
 	) -> Result;
 
-	/// Returns a nonce that is unique per contract instantiation.
-	///
-	/// The nonce is incremented for each successful contract instantiation. This is a
-	/// sensible default salt for contract instantiations.
-	fn instantiation_nonce() -> u64;
-
 	/// Checks whether a specified address belongs to a contract.
 	///
 	/// # Parameters

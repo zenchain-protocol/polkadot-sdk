@@ -113,8 +113,6 @@ mod sys {
 
 		pub fn input(buf_ptr: *mut u8, buf_len_ptr: *mut u32);
 
-		pub fn instantiation_nonce() -> u64;
-
 		pub fn is_contract(account_id_ptr: *const u8) -> ReturnCode;
 
 		pub fn minimum_balance(output_ptr: *mut u8, output_len_ptr: *mut u32);
@@ -810,10 +808,6 @@ impl HostFn for HostFnImpl {
 
 	fn unlock_delegate_dependency(code_hash: &[u8]) {
 		unsafe { sys::unlock_delegate_dependency(code_hash.as_ptr()) }
-	}
-
-	fn instantiation_nonce() -> u64 {
-		unsafe { sys::instantiation_nonce() }
 	}
 
 	fn reentrance_count() -> u32 {

@@ -789,9 +789,6 @@ mod tests {
 		fn account_reentrance_count(&self, _account_id: &AccountIdOf<Self::T>) -> u32 {
 			12
 		}
-		fn nonce(&mut self) -> u64 {
-			995
-		}
 		fn increment_refcount(_code_hash: CodeHash<Self::T>) -> DispatchResult {
 			Ok(())
 		}
@@ -3347,34 +3344,6 @@ mod tests {
 		)
 	)
 
-	(func (export "deploy"))
-)
-"#;
-
-		let mut mock_ext = MockExt::default();
-		execute(CODE, vec![], &mut mock_ext).unwrap();
-	}
-
-	#[test]
-	fn instantiation_nonce_works() {
-		const CODE: &str = r#"
-(module
-	(import "seal0" "instantiation_nonce" (func $nonce (result i64)))
-	(import "env" "memory" (memory 1 1))
-
-	(func $assert (param i32)
-		(block $ok
-			(br_if $ok
-				(local.get 0)
-			)
-			(unreachable)
-		)
-	)
-	(func (export "call")
-		(call $assert
-			(i64.eq (call $nonce) (i64.const 995))
-		)
-	)
 	(func (export "deploy"))
 )
 "#;

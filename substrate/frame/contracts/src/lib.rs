@@ -224,7 +224,7 @@ impl Default for ApiVersion {
 #[test]
 fn api_version_is_up_to_date() {
 	assert_eq!(
-		111,
+		110,
 		crate::wasm::STABLE_API_COUNT,
 		"Stable API count has changed. Bump the returned value of ApiVersion::default() and update the test."
 	);
@@ -1167,31 +1167,6 @@ pub mod pallet {
 	/// A mapping from a contract's code hash to its code info.
 	#[pallet::storage]
 	pub(crate) type CodeInfoOf<T: Config> = StorageMap<_, Identity, CodeHash<T>, CodeInfo<T>>;
-
-	/// This is a **monotonic** counter incremented on contract instantiation.
-	///
-	/// This is used in order to generate unique trie ids for contracts.
-	/// The trie id of a new contract is calculated from hash(account_id, nonce).
-	/// The nonce is required because otherwise the following sequence would lead to
-	/// a possible collision of storage:
-	///
-	/// 1. Create a new contract.
-	/// 2. Terminate the contract.
-	/// 3. Immediately recreate the contract with the same account_id.
-	///
-	/// This is bad because the contents of a trie are deleted lazily and there might be
-	/// storage of the old instantiation still in it when the new contract is created. Please
-	/// note that we can't replace the counter by the block number because the sequence above
-	/// can happen in the same block. We also can't keep the account counter in memory only
-	/// because storage is the only way to communicate across different extrinsics in the
-	/// same block.
-	///
-	/// # Note
-	///
-	/// Do not use it to determine the number of contracts. It won't be decremented if
-	/// a contract is destroyed.
-	#[pallet::storage]
-	pub(crate) type Nonce<T: Config> = StorageValue<_, u64, ValueQuery>;
 
 	/// The code associated with a given account.
 	#[pallet::storage]

@@ -79,7 +79,7 @@ impl<T: Config> ContractInfo<T> {
 	/// in storage.
 	pub fn new(
 		account: &AccountIdOf<T>,
-		nonce: u64,
+		nonce: T::Nonce,
 		code_hash: CodeHash<T>,
 	) -> Result<Self, DispatchError> {
 		if <ContractInfoOf<T>>::contains_key(account) {
@@ -87,7 +87,7 @@ impl<T: Config> ContractInfo<T> {
 		}
 
 		let trie_id = {
-			let buf = (account, nonce).using_encoded(T::Hashing::hash);
+			let buf = ("bcontract_trie_v1", account, nonce).using_encoded(T::Hashing::hash);
 			buf.as_ref()
 				.to_vec()
 				.try_into()
