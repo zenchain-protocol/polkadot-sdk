@@ -413,33 +413,16 @@ mod benchmarks {
 	// It creates a maximum number of metering blocks per byte.
 	// `c`: Size of the code in bytes.
 	#[benchmark(pov_mode = Measured)]
-	fn upload_code_determinism_enforced(c: Linear<0, { T::MaxCodeLen::get() }>) {
+	fn upload_code(c: Linear<0, { T::MaxCodeLen::get() }>) {
 		let caller = whitelisted_caller();
 		T::Currency::set_balance(&caller, caller_funding::<T>());
 		let WasmModule { code, hash, .. } = WasmModule::<T>::sized(c, Location::Call, false);
 		let origin = RawOrigin::Signed(caller.clone());
 		#[extrinsic_call]
-		upload_code(origin, code, None, Determinism::Enforced);
+		_(origin, code, None);
 		// uploading the code reserves some balance in the callers account
 		assert!(T::Currency::total_balance_on_hold(&caller) > 0u32.into());
 		assert!(<Contract<T>>::code_exists(&hash));
-	}
-
-	// Uploading code with [`Determinism::Relaxed`] should be more expensive than uploading code
-	// with [`Determinism::Enforced`], as we always try to save the code with
-	// [`Determinism::Enforced`] first.
-	#[benchmark(pov_mode = Measured)]
-	fn upload_code_determinism_relaxed(c: Linear<0, { T::MaxCodeLen::get() }>) {
-		let caller = whitelisted_caller();
-		T::Currency::set_balance(&caller, caller_funding::<T>());
-		let WasmModule { code, hash, .. } = WasmModule::<T>::sized(c, Location::Call, true);
-		let origin = RawOrigin::Signed(caller.clone());
-		#[extrinsic_call]
-		upload_code(origin, code, None, Determinism::Relaxed);
-		assert!(T::Currency::total_balance_on_hold(&caller) > 0u32.into());
-		assert!(<Contract<T>>::code_exists(&hash));
-		// Ensure that the benchmark follows the most expensive path, i.e., the code is saved with
-		assert_eq!(CodeInfoOf::<T>::get(&hash).unwrap().determinism(), Determinism::Relaxed);
 	}
 
 	// Removing code does not depend on the size of the contract because all the information
@@ -451,8 +434,7 @@ mod benchmarks {
 		T::Currency::set_balance(&caller, caller_funding::<T>());
 		let WasmModule { code, hash, .. } = WasmModule::<T>::dummy();
 		let origin = RawOrigin::Signed(caller.clone());
-		let uploaded =
-			<Contracts<T>>::bare_upload_code(caller.clone(), code, None, Determinism::Enforced)?;
+		let uploaded = <Contracts<T>>::bare_upload_code(caller.clone(), code, None)?;
 		assert_eq!(uploaded.code_hash, hash);
 		assert_eq!(uploaded.deposit, T::Currency::total_balance_on_hold(&caller));
 		assert!(<Contract<T>>::code_exists(&hash));

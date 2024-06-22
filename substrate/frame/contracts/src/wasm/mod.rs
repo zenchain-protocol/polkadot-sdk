@@ -55,7 +55,7 @@ use frame_support::{
 	traits::{fungible::MutateHold, tokens::Precision::BestEffort},
 };
 use sp_core::Get;
-use sp_runtime::{DispatchError, RuntimeDebug};
+use sp_runtime::DispatchError;
 use sp_std::prelude::*;
 use wasmi::{CompilationMode, InstancePre, Linker, Memory, MemoryType, StackLimits, Store};
 
@@ -81,7 +81,6 @@ pub struct WasmBlob<T: Config> {
 /// - owner of the contract, i.e. account uploaded its code,
 /// - storage deposit amount,
 /// - reference count,
-/// - determinism marker.
 ///
 /// It is stored in a separate storage entry to avoid loading the code when not necessary.
 #[derive(Clone, Encode, Decode, scale_info::TypeInfo, MaxEncodedLen)]
@@ -96,33 +95,8 @@ pub struct CodeInfo<T: Config> {
 	/// The number of instantiated contracts that use this as their code.
 	#[codec(compact)]
 	refcount: u64,
-	/// Marks if the code might contain non-deterministic features and is therefore never allowed
-	/// to be run on-chain. Specifically, such a code can never be instantiated into a contract
-	/// and can just be used through a delegate call.
-	determinism: Determinism,
 	/// length of the code in bytes.
 	code_len: u32,
-}
-
-/// Defines the required determinism level of a wasm blob when either running or uploading code.
-#[derive(
-	Clone, Copy, Encode, Decode, scale_info::TypeInfo, MaxEncodedLen, RuntimeDebug, PartialEq, Eq,
-)]
-pub enum Determinism {
-	/// The execution should be deterministic and hence no indeterministic instructions are
-	/// allowed.
-	///
-	/// Dispatchables always use this mode in order to make on-chain execution deterministic.
-	Enforced,
-	/// Allow calling or uploading an indeterministic code.
-	///
-	/// This is only possible when calling into `pallet-contracts` directly via
-	/// [`crate::Pallet::bare_call`].
-	///
-	/// # Note
-	///
-	/// **Never** use this mode for on-chain execution.
-	Relaxed,
 }
 
 impl ExportedFunction {
@@ -153,13 +127,11 @@ impl<T: Config> WasmBlob<T> {
 		code: Vec<u8>,
 		schedule: &Schedule<T>,
 		owner: AccountIdOf<T>,
-		determinism: Determinism,
 	) -> Result<Self, (DispatchError, &'static str)> {
 		prepare::prepare::<runtime::Env, T>(
 			code.try_into().map_err(|_| (<Error<T>>::CodeTooLarge.into(), ""))?,
 			schedule,
 			owner,
-			determinism,
 		)
 	}
 
@@ -301,18 +273,7 @@ impl<T: Config> WasmBlob<T> {
 impl<T: Config> CodeInfo<T> {
 	#[cfg(test)]
 	pub fn new(owner: T::AccountId) -> Self {
-		CodeInfo {
-			owner,
-			deposit: Default::default(),
-			refcount: 0,
-			code_len: 0,
-			determinism: Determinism::Enforced,
-		}
-	}
-
-	/// Returns the determinism of the module.
-	pub fn determinism(&self) -> Determinism {
-		self.determinism
+		CodeInfo { owner, deposit: Default::default(), refcount: 0, code_len: 0 }
 	}
 
 	/// Returns reference count of the module.
@@ -384,7 +345,6 @@ impl<T: Config> WasmBlob<T> {
 
 		let contract = LoadedModule::new::<T>(
 			&code,
-			self.code_info.determinism,
 			Some(StackLimits::default()),
 			LoadingMode::Unchecked,
 			compilation_mode,
@@ -486,10 +446,6 @@ impl<T: Config> Executable<T> for WasmBlob<T> {
 
 	fn code_info(&self) -> &CodeInfo<T> {
 		&self.code_info
-	}
-
-	fn is_deterministic(&self) -> bool {
-		matches!(self.code_info.determinism, Determinism::Enforced)
 	}
 }
 
@@ -832,13 +788,8 @@ mod tests {
 				ALICE,
 			)?
 		} else {
-			WasmBlob::<RuntimeConfig>::from_code(
-				wasm,
-				ext.borrow_mut().schedule(),
-				ALICE,
-				Determinism::Enforced,
-			)
-			.map_err(|err| err.0)?
+			WasmBlob::<RuntimeConfig>::from_code(wasm, ext.borrow_mut().schedule(), ALICE)
+				.map_err(|err| err.0)?
 		};
 		executable.execute(ext.borrow_mut(), entry_point, input_data)
 	}

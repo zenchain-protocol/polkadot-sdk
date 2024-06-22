@@ -20,8 +20,8 @@
 /// ! environment that provides the seal interface as imported functions.
 use super::{code::WasmModule, Config};
 use crate::wasm::{
-	AllowDeprecatedInterface, AllowUnstableInterface, Determinism, Environment, LoadedModule,
-	LoadingMode, WasmBlob,
+	AllowDeprecatedInterface, AllowUnstableInterface, Environment, LoadedModule, LoadingMode,
+	WasmBlob,
 };
 use sp_core::Get;
 use wasmi::{errors::LinkerError, CompilationMode, Func, Linker, StackLimits, Store};
@@ -45,7 +45,6 @@ impl<T: Config> From<&WasmModule<T>> for Sandbox {
 	fn from(module: &WasmModule<T>) -> Self {
 		let contract = LoadedModule::new::<T>(
 			&module.code,
-			Determinism::Relaxed,
 			Some(StackLimits::default()),
 			LoadingMode::Checked,
 			CompilationMode::Eager,

@@ -22,10 +22,7 @@
 use crate::{
 	chain_extension::ChainExtension,
 	storage::meter::Diff,
-	wasm::{
-		runtime::AllowDeprecatedInterface, CodeInfo, Determinism, Environment, WasmBlob,
-		BYTES_PER_PAGE,
-	},
+	wasm::{runtime::AllowDeprecatedInterface, CodeInfo, Environment, WasmBlob, BYTES_PER_PAGE},
 	AccountIdOf, CodeVec, Config, Error, Schedule, LOG_TARGET,
 };
 use codec::MaxEncodedLen;
@@ -69,7 +66,6 @@ impl LoadedModule {
 	/// Returns `Err` if the `code` cannot be deserialized or if it contains an invalid module.
 	pub fn new<T>(
 		code: &[u8],
-		determinism: Determinism,
 		stack_limits: Option<StackLimits>,
 		loading_mode: LoadingMode,
 		compilation_mode: CompilationMode,
@@ -86,7 +82,7 @@ impl LoadedModule {
 			.wasm_tail_call(false)
 			.wasm_extended_const(false)
 			.wasm_saturating_float_to_int(false)
-			.floats(matches!(determinism, Determinism::Relaxed))
+			.floats(false)
 			.compilation_mode(compilation_mode)
 			.consume_fuel(true);
 
@@ -245,11 +241,7 @@ impl LoadedModule {
 /// 1. General engine-side validation makes sure the module is consistent and does not contain
 ///    forbidden WebAssembly features.
 /// 2. Additional checks which are specific to smart contracts eligible for this pallet.
-fn validate<E, T>(
-	code: &[u8],
-	schedule: &Schedule<T>,
-	determinism: &mut Determinism,
-) -> Result<(), (DispatchError, &'static str)>
+fn validate<E, T>(code: &[u8], schedule: &Schedule<T>) -> Result<(), (DispatchError, &'static str)>
 where
 	E: Environment<()>,
 	T: Config,
@@ -261,34 +253,12 @@ where
 
 		// We check that the module is generally valid,
 		// and does not have restricted WebAssembly features, here.
-		let contract_module = match *determinism {
-			Determinism::Relaxed =>
-				if let Ok(module) = LoadedModule::new::<T>(
-					code,
-					Determinism::Enforced,
-					stack_limits,
-					LoadingMode::Checked,
-					CompilationMode::Eager,
-				) {
-					*determinism = Determinism::Enforced;
-					module
-				} else {
-					LoadedModule::new::<T>(
-						code,
-						Determinism::Relaxed,
-						None,
-						LoadingMode::Checked,
-						CompilationMode::Eager,
-					)?
-				},
-			Determinism::Enforced => LoadedModule::new::<T>(
-				code,
-				Determinism::Enforced,
-				stack_limits,
-				LoadingMode::Checked,
-				CompilationMode::Eager,
-			)?,
-		};
+		let contract_module = LoadedModule::new::<T>(
+			code,
+			stack_limits,
+			LoadingMode::Checked,
+			CompilationMode::Eager,
+		)?;
 
 		// The we check that module satisfies constraints the pallet puts on contracts.
 		contract_module.scan_exports()?;
@@ -325,13 +295,12 @@ pub fn prepare<E, T>(
 	code: CodeVec<T>,
 	schedule: &Schedule<T>,
 	owner: AccountIdOf<T>,
-	mut determinism: Determinism,
 ) -> Result<WasmBlob<T>, (DispatchError, &'static str)>
 where
 	E: Environment<()>,
 	T: Config,
 {
-	validate::<E, T>(code.as_ref(), schedule, &mut determinism)?;
+	validate::<E, T>(code.as_ref(), schedule)?;
 
 	// Calculate deposit for storing contract code and `code_info` in two different storage items.
 	let code_len = code.len() as u32;
@@ -339,7 +308,7 @@ where
 	let deposit = Diff { bytes_added, items_added: 2, ..Default::default() }
 		.update_contract::<T>(None)
 		.charge_or_zero();
-	let code_info = CodeInfo { owner, deposit, determinism, refcount: 0, code_len };
+	let code_info = CodeInfo { owner, deposit, refcount: 0, code_len };
 	let code_hash = T::Hashing::hash(&code);
 
 	Ok(WasmBlob { code, code_info, code_hash })
@@ -360,14 +329,8 @@ pub mod benchmarking {
 		schedule: &Schedule<T>,
 		owner: AccountIdOf<T>,
 	) -> Result<WasmBlob<T>, DispatchError> {
-		let determinism = Determinism::Enforced;
-		let contract_module = LoadedModule::new::<T>(
-			&code,
-			determinism,
-			None,
-			LoadingMode::Checked,
-			CompilationMode::Eager,
-		)?;
+		let contract_module =
+			LoadedModule::new::<T>(&code, None, LoadingMode::Checked, CompilationMode::Eager)?;
 		let _ = contract_module.scan_imports::<T>(schedule)?;
 		let code: CodeVec<T> = code.try_into().map_err(|_| <Error<T>>::CodeTooLarge)?;
 		let code_info = CodeInfo {
@@ -376,7 +339,6 @@ pub mod benchmarking {
 			deposit: Default::default(),
 			refcount: 0,
 			code_len: code.len() as u32,
-			determinism,
 		};
 		let code_hash = T::Hashing::hash(&code);
 
@@ -448,7 +410,6 @@ mod tests {
 					wasm,
 					&schedule,
 					ALICE,
-					Determinism::Enforced,
 				);
 				assert_matches::assert_matches!(r.map_err(|(_, msg)| msg), $($expected)*);
 			}

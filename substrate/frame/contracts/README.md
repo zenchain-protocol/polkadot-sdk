@@ -40,31 +40,6 @@ Contract call failures are not cascading. When failures occur in a sub-call, the
 only revert at the specific contract level. For example, if contract A calls contract B, and B fails, A can decide how
 to handle that failure, either proceeding or reverting A's changes.
 
-### Off-chain Execution
-
-In general, a contract execution needs to be deterministic so that all nodes come to the same conclusion when executing
-it. To that end we disallow any instructions that could cause indeterminism. Most notable are any floating point
-arithmetic. That said, sometimes contracts are executed off-chain and hence are not subject to consensus. If code is
-only executed by a single node and implicitly trusted by other actors is such a case. Trusted execution environments
-come to mind. To that end we allow the execution of indeterministic code for off-chain usages with the following
-constraints:
-
-1. No contract can ever be instantiated from an indeterministic code. The only way to execute the code is to use a
-delegate call from a deterministic contract.
-2. The code that wants to use this feature needs to depend on `pallet-contracts` and use
-[`bare_call()`](https://paritytech.github.io/substrate/master/pallet_contracts/pallet/struct.Pallet.html#method.bare_call)
-directly. This makes sure that by default `pallet-contracts` does not expose any indeterminism.
-
-#### How to use
-
-An indeterministic code can be deployed on-chain by passing `Determinism::Relaxed` to
-[`upload_code()`](https://paritytech.github.io/substrate/master/pallet_contracts/pallet/struct.Pallet.html#method.upload_code).
-A deterministic contract can then delegate call into it if and only if it is ran by using
-[`bare_call()`](https://paritytech.github.io/substrate/master/pallet_contracts/pallet/struct.Pallet.html#method.bare_call)
-and passing
-[`Determinism::Relaxed`](https://paritytech.github.io/substrate/master/pallet_contracts/enum.Determinism.html#variant.Relaxed)
-to it. **Never use this argument when the contract is called from an on-chain transaction.**
-
 ## Interface
 
 ### Dispatchable functions

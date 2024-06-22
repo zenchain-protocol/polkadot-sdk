@@ -147,7 +147,6 @@ pub use crate::{
 	migration::{MigrateSequence, Migration, NoopMigration},
 	pallet::*,
 	schedule::{InstructionWeights, Limits, Schedule},
-	wasm::Determinism,
 };
 pub use weights::WeightInfo;
 
@@ -695,8 +694,7 @@ pub mod pallet {
 				debug_message: None,
 			};
 			let dest = T::Lookup::lookup(dest)?;
-			let mut output =
-				CallInput::<T> { dest, determinism: Determinism::Enforced }.run_guarded(common);
+			let mut output = CallInput::<T> { dest }.run_guarded(common);
 			if let Ok(retval) = &output.result {
 				if retval.did_revert() {
 					output.result = Err(<Error<T>>::ContractReverted.into());
@@ -801,7 +799,6 @@ pub mod pallet {
 				upload_origin,
 				code,
 				storage_deposit_limit.clone().map(Into::into),
-				Determinism::Enforced,
 				None,
 			)?;
 
@@ -844,9 +841,6 @@ pub mod pallet {
 		/// the in storage version to the current
 		/// [`InstructionWeights::version`](InstructionWeights).
 		///
-		/// - `determinism`: If this is set to any other value but [`Determinism::Enforced`] then
-		///   the only way to use this code is to delegate call into it from an offchain execution.
-		///   Set to [`Determinism::Enforced`] if in doubt.
 		///
 		/// # Note
 		///
@@ -854,27 +848,16 @@ pub mod pallet {
 		/// To avoid this situation a constructor could employ access control so that it can
 		/// only be instantiated by permissioned entities. The same is true when uploading
 		/// through [`Self::instantiate_with_code`].
-		///
-		/// Use [`Determinism::Relaxed`] exclusively for non-deterministic code. If the uploaded
-		/// code is deterministic, specifying [`Determinism::Relaxed`] will be disregarded and
-		/// result in higher gas costs.
 		#[pallet::call_index(3)]
-		#[pallet::weight(
-			match determinism {
-				Determinism::Enforced => T::WeightInfo::upload_code_determinism_enforced(code.len() as u32),
-				Determinism::Relaxed => T::WeightInfo::upload_code_determinism_relaxed(code.len() as u32),
-			}
-		)]
+		#[pallet::weight(T::WeightInfo::upload_code_determinism_enforced(code.len() as u32))]
 		pub fn upload_code(
 			origin: OriginFor<T>,
 			code: Vec<u8>,
 			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
-			determinism: Determinism,
 		) -> DispatchResult {
 			Migration::<T>::ensure_migrated()?;
 			let origin = T::UploadOrigin::ensure_origin(origin)?;
-			Self::bare_upload_code(origin, code, storage_deposit_limit.map(Into::into), determinism)
-				.map(|_| ())
+			Self::bare_upload_code(origin, code, storage_deposit_limit.map(Into::into)).map(|_| ())
 		}
 
 		/// Remove the code stored under `code_hash` and refund the deposit to its owner.
@@ -1235,7 +1218,6 @@ struct CommonInput<'a, T: Config> {
 /// Input specific to a call into contract.
 struct CallInput<T: Config> {
 	dest: T::AccountId,
-	determinism: Determinism,
 }
 
 /// Reference to an existing code hash or a new wasm module.
@@ -1372,7 +1354,7 @@ impl<T: Config> Invokable<T> for CallInput<T> {
 		common: CommonInput<T>,
 		mut gas_meter: GasMeter<T>,
 	) -> InternalOutput<T, Self::Output> {
-		let CallInput { dest, determinism } = self;
+		let CallInput { dest } = self;
 		let CommonInput { origin, value, data, debug_message, .. } = common;
 		let mut storage_meter =
 			match StorageMeter::new(&origin, common.storage_deposit_limit, common.value) {
@@ -1394,7 +1376,6 @@ impl<T: Config> Invokable<T> for CallInput<T> {
 			value,
 			data.clone(),
 			debug_message,
-			determinism,
 		);
 
 		match storage_meter.try_into_deposit(&origin) {
@@ -1499,7 +1480,6 @@ impl<T: Config> Pallet<T> {
 		data: Vec<u8>,
 		debug: DebugInfo,
 		collect_events: CollectEvents,
-		determinism: Determinism,
 	) -> ContractExecResult<BalanceOf<T>, EventRecordOf<T>> {
 		ensure_no_migration_in_progress!();
 
@@ -1517,7 +1497,7 @@ impl<T: Config> Pallet<T> {
 			storage_deposit_limit,
 			debug_message: debug_message.as_mut(),
 		};
-		let output = CallInput::<T> { dest, determinism }.run_guarded(common);
+		let output = CallInput::<T> { dest }.run_guarded(common);
 		let events = if matches!(collect_events, CollectEvents::UnsafeCollect) {
 			Some(System::<T>::read_events_no_consensus().map(|e| *e).collect())
 		} else {
@@ -1581,7 +1561,6 @@ impl<T: Config> Pallet<T> {
 					origin.clone(),
 					code,
 					storage_deposit_limit.map(Into::into),
-					Determinism::Enforced,
 					debug_message.as_mut(),
 				);
 
@@ -1638,11 +1617,9 @@ impl<T: Config> Pallet<T> {
 		origin: T::AccountId,
 		code: Vec<u8>,
 		storage_deposit_limit: Option<BalanceOf<T>>,
-		determinism: Determinism,
 	) -> CodeUploadResult<CodeHash<T>, BalanceOf<T>> {
 		Migration::<T>::ensure_migrated()?;
-		let (module, deposit) =
-			Self::try_upload_code(origin, code, storage_deposit_limit, determinism, None)?;
+		let (module, deposit) = Self::try_upload_code(origin, code, storage_deposit_limit, None)?;
 		Ok(CodeUploadReturnValue { code_hash: *module.code_hash(), deposit })
 	}
 
@@ -1651,15 +1628,13 @@ impl<T: Config> Pallet<T> {
 		origin: T::AccountId,
 		code: Vec<u8>,
 		storage_deposit_limit: Option<BalanceOf<T>>,
-		determinism: Determinism,
 		mut debug_message: Option<&mut DebugBufferVec<T>>,
 	) -> Result<(WasmBlob<T>, BalanceOf<T>), DispatchError> {
 		let schedule = T::Schedule::get();
-		let mut module =
-			WasmBlob::from_code(code, &schedule, origin, determinism).map_err(|(err, msg)| {
-				debug_message.as_mut().map(|d| d.try_extend(msg.bytes()));
-				err
-			})?;
+		let mut module = WasmBlob::from_code(code, &schedule, origin).map_err(|(err, msg)| {
+			debug_message.as_mut().map(|d| d.try_extend(msg.bytes()));
+			err
+		})?;
 		let deposit = module.store_code()?;
 		if let Some(storage_deposit_limit) = storage_deposit_limit {
 			ensure!(storage_deposit_limit >= deposit, <Error<T>>::StorageDepositLimitExhausted);
@@ -1774,7 +1749,6 @@ sp_api::decl_runtime_apis! {
 			origin: AccountId,
 			code: Vec<u8>,
 			storage_deposit_limit: Option<Balance>,
-			determinism: Determinism,
 		) -> CodeUploadResult<Hash, Balance>;
 
 		/// Query a given storage key in a given contract.

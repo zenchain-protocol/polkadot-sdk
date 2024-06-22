@@ -33,7 +33,7 @@ use crate::{
 	primitives::CodeUploadReturnValue,
 	storage::DeletionQueueManager,
 	tests::test_utils::{get_contract, get_contract_checked},
-	wasm::{Determinism, LoadingMode, ReturnErrorCode as RuntimeReturnCode},
+	wasm::{LoadingMode, ReturnErrorCode as RuntimeReturnCode},
 	weights::WeightInfo,
 	Array, BalanceOf, Code, CodeHash, CodeInfoOf, CollectEvents, Config, ContractInfo,
 	ContractInfoOf, DebugInfo, DefaultAddressGenerator, DeletionQueueCounter, Error, HoldReason,
@@ -656,12 +656,7 @@ fn migration_in_progress_works() {
 		MigrationInProgress::<Test>::set(Some(Default::default()));
 
 		assert_err!(
-			Contracts::upload_code(
-				RuntimeOrigin::signed(ALICE),
-				vec![],
-				None,
-				Determinism::Enforced
-			),
+			Contracts::upload_code(RuntimeOrigin::signed(ALICE), vec![], None,),
 			Error::<Test>::MigrationInProgress,
 		);
 		assert_err!(
@@ -695,12 +690,7 @@ fn instantiate_and_call_and_deposit_event() {
 
 		// We determine the storage deposit limit after uploading because it depends on ALICEs free
 		// balance which is changed by uploading a module.
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm,
-			None,
-			Determinism::Enforced
-		));
+		assert_ok!(Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm, None,));
 
 		// Drop previous events
 		initialize_block(2);
@@ -890,8 +880,7 @@ fn instantiate_unique_trie_id() {
 
 	ExtBuilder::default().existential_deposit(500).build().execute_with(|| {
 		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-		Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm, None, Determinism::Enforced)
-			.unwrap();
+		Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm, None).unwrap();
 
 		// Instantiate the contract and store its trie id for later comparison.
 		let addr =
@@ -971,7 +960,7 @@ fn deploy_and_call_other_contract() {
 		let caller_addr = builder::bare_instantiate(Code::Upload(caller_wasm))
 			.value(100_000)
 			.build_and_unwrap_account_id();
-		Contracts::bare_upload_code(ALICE, callee_wasm, None, Determinism::Enforced).unwrap();
+		Contracts::bare_upload_code(ALICE, callee_wasm, None).unwrap();
 
 		let callee_addr = Contracts::contract_address(
 			&caller_addr,
@@ -1091,7 +1080,6 @@ fn delegate_call() {
 			RuntimeOrigin::signed(ALICE),
 			callee_wasm,
 			Some(codec::Compact(100_000)),
-			Determinism::Enforced,
 		));
 
 		assert_ok!(builder::call(caller_addr.clone())
@@ -1106,7 +1094,7 @@ fn track_check_uncheck_module_call() {
 	let (wasm, code_hash) = compile_module::<Test>("dummy").unwrap();
 	ExtBuilder::default().build().execute_with(|| {
 		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-		Contracts::bare_upload_code(ALICE, wasm, None, Determinism::Enforced).unwrap();
+		Contracts::bare_upload_code(ALICE, wasm, None).unwrap();
 		builder::bare_instantiate(Code::Existing(code_hash)).build_and_unwrap_result();
 	});
 
@@ -1345,7 +1333,7 @@ fn destroy_contract_and_transfer_funds() {
 	ExtBuilder::default().existential_deposit(50).build().execute_with(|| {
 		// Create code hash for bob to instantiate
 		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-		Contracts::bare_upload_code(ALICE, callee_wasm, None, Determinism::Enforced).unwrap();
+		Contracts::bare_upload_code(ALICE, callee_wasm, None).unwrap();
 
 		// This deploys the BOB contract, which in turn deploys the CHARLIE contract during
 		// construction.
@@ -2486,7 +2474,6 @@ fn upload_code_works() {
 			RuntimeOrigin::signed(ALICE),
 			wasm,
 			Some(codec::Compact(1_000)),
-			Determinism::Enforced,
 		));
 		// Ensure the contract was stored and get expected deposit amount to be reserved.
 		let deposit_expected = expected_deposit(ensure_stored(code_hash));
@@ -2523,7 +2510,6 @@ fn upload_code_limit_too_low() {
 				RuntimeOrigin::signed(ALICE),
 				wasm,
 				Some(codec::Compact(deposit_insufficient)),
-				Determinism::Enforced
 			),
 			<Error<Test>>::StorageDepositLimitExhausted,
 		);
@@ -2545,12 +2531,7 @@ fn upload_code_not_enough_balance() {
 		initialize_block(2);
 
 		assert_noop!(
-			Contracts::upload_code(
-				RuntimeOrigin::signed(ALICE),
-				wasm,
-				Some(codec::Compact(1_000)),
-				Determinism::Enforced
-			),
+			Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm, Some(codec::Compact(1_000)),),
 			<Error<Test>>::StorageDepositNotEnoughFunds,
 		);
 
@@ -2572,7 +2553,6 @@ fn remove_code_works() {
 			RuntimeOrigin::signed(ALICE),
 			wasm,
 			Some(codec::Compact(1_000)),
-			Determinism::Enforced,
 		));
 		// Ensure the contract was stored and get expected deposit amount to be reserved.
 		let deposit_expected = expected_deposit(ensure_stored(code_hash));
@@ -2618,7 +2598,6 @@ fn remove_code_wrong_origin() {
 			RuntimeOrigin::signed(ALICE),
 			wasm,
 			Some(codec::Compact(1_000)),
-			Determinism::Enforced,
 		));
 		// Ensure the contract was stored and get expected deposit amount to be reserved.
 		let deposit_expected = expected_deposit(ensure_stored(code_hash));
@@ -3009,12 +2988,7 @@ fn set_code_extrinsic() {
 
 		let addr = builder::bare_instantiate(Code::Upload(wasm)).build_and_unwrap_account_id();
 
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			new_wasm,
-			None,
-			Determinism::Enforced
-		));
+		assert_ok!(Contracts::upload_code(RuntimeOrigin::signed(ALICE), new_wasm, None,));
 
 		// Drop previous events
 		initialize_block(2);
@@ -3125,12 +3099,7 @@ fn contract_reverted() {
 		let input = (flags.bits(), buffer).encode();
 
 		// We just upload the code for later use
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm.clone(),
-			None,
-			Determinism::Enforced
-		));
+		assert_ok!(Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm.clone(), None,));
 
 		// Calling extrinsic: revert leads to an error
 		assert_err_ignore_postinfo!(
@@ -3186,12 +3155,7 @@ fn set_code_hash() {
 			.value(300_000)
 			.build_and_unwrap_account_id();
 		// upload new code
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			new_wasm.clone(),
-			None,
-			Determinism::Enforced
-		));
+		assert_ok!(Contracts::upload_code(RuntimeOrigin::signed(ALICE), new_wasm.clone(), None,));
 
 		System::reset_events();
 
@@ -3601,152 +3565,6 @@ fn deposit_limit_honors_min_leftover() {
 }
 
 #[test]
-fn upload_should_enforce_deterministic_mode_when_possible() {
-	let upload = |fixture, determinism| {
-		let (wasm, code_hash) = compile_module::<Test>(fixture).unwrap();
-		ExtBuilder::default()
-			.build()
-			.execute_with(|| -> Result<Determinism, DispatchError> {
-				let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-				Contracts::bare_upload_code(ALICE, wasm, None, determinism)?;
-				let info = CodeInfoOf::<Test>::get(code_hash).unwrap();
-				Ok(info.determinism())
-			})
-	};
-
-	assert_eq!(upload("dummy", Determinism::Enforced), Ok(Determinism::Enforced));
-	assert_eq!(upload("dummy", Determinism::Relaxed), Ok(Determinism::Enforced));
-	assert_eq!(upload("float_instruction", Determinism::Relaxed), Ok(Determinism::Relaxed));
-	assert!(upload("float_instruction", Determinism::Enforced).is_err());
-}
-
-#[test]
-fn cannot_instantiate_indeterministic_code() {
-	let (wasm, code_hash) = compile_module::<Test>("float_instruction").unwrap();
-	let (caller_wasm, _) = compile_module::<Test>("instantiate_return_code").unwrap();
-	ExtBuilder::default().existential_deposit(200).build().execute_with(|| {
-		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-
-		// Try to instantiate directly from code
-		assert_err_ignore_postinfo!(
-			builder::instantiate_with_code(wasm.clone()).build(),
-			<Error<Test>>::CodeRejected,
-		);
-		assert_err!(
-			builder::bare_instantiate(Code::Upload(wasm.clone())).build().result,
-			<Error<Test>>::CodeRejected,
-		);
-
-		// Try to upload a non-deterministic code as deterministic
-		assert_err!(
-			Contracts::upload_code(
-				RuntimeOrigin::signed(ALICE),
-				wasm.clone(),
-				None,
-				Determinism::Enforced
-			),
-			<Error<Test>>::CodeRejected,
-		);
-
-		// Try to instantiate from already stored indeterministic code hash
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm,
-			None,
-			Determinism::Relaxed,
-		));
-
-		assert_err_ignore_postinfo!(
-			builder::instantiate(code_hash).build(),
-			<Error<Test>>::Indeterministic,
-		);
-		assert_err!(
-			builder::bare_instantiate(Code::Existing(code_hash)).build().result,
-			<Error<Test>>::Indeterministic,
-		);
-
-		// Deploy contract which instantiates another contract
-		let addr =
-			builder::bare_instantiate(Code::Upload(caller_wasm)).build_and_unwrap_account_id();
-
-		// Try to instantiate `code_hash` from another contract in deterministic mode
-		assert_err!(
-			builder::bare_call(addr.clone()).data(code_hash.encode()).build().result,
-			<Error<Test>>::Indeterministic,
-		);
-
-		// Instantiations are not allowed even in non-determinism mode
-		assert_err!(
-			builder::bare_call(addr.clone()).data(code_hash.encode()).build().result,
-			<Error<Test>>::Indeterministic,
-		);
-	});
-}
-
-#[test]
-fn cannot_set_code_indeterministic_code() {
-	let (wasm, code_hash) = compile_module::<Test>("float_instruction").unwrap();
-	let (caller_wasm, _) = compile_module::<Test>("set_code_hash").unwrap();
-	ExtBuilder::default().existential_deposit(200).build().execute_with(|| {
-		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-
-		// Put the non-deterministic contract on-chain
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm,
-			None,
-			Determinism::Relaxed,
-		));
-
-		// Create the contract that will call `seal_set_code_hash`
-		let caller_addr =
-			builder::bare_instantiate(Code::Upload(caller_wasm)).build_and_unwrap_account_id();
-
-		// We do not allow to set the code hash to a non-deterministic wasm
-		assert_err!(
-			builder::bare_call(caller_addr.clone()).data(code_hash.encode()).build().result,
-			<Error<Test>>::Indeterministic,
-		);
-	});
-}
-
-#[test]
-fn delegate_call_indeterministic_code() {
-	let (wasm, code_hash) = compile_module::<Test>("float_instruction").unwrap();
-	let (caller_wasm, _) = compile_module::<Test>("delegate_call_simple").unwrap();
-	ExtBuilder::default().existential_deposit(200).build().execute_with(|| {
-		let _ = <Test as Config>::Currency::set_balance(&ALICE, 1_000_000);
-
-		// Put the non-deterministic contract on-chain
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm,
-			None,
-			Determinism::Relaxed,
-		));
-
-		// Create the contract that will call `seal_delegate_call`
-		let caller_addr =
-			builder::bare_instantiate(Code::Upload(caller_wasm)).build_and_unwrap_account_id();
-
-		// The delegate call will fail in deterministic mode
-		assert_err!(
-			builder::bare_call(caller_addr.clone()).data(code_hash.encode()).build().result,
-			<Error<Test>>::Indeterministic,
-		);
-
-		// The delegate call will work on non-deterministic mode
-		assert_ok!(
-			builder::bare_call(caller_addr.clone())
-				.data(code_hash.encode())
-				.determinism(Determinism::Relaxed)
-				.build()
-				.result
-		);
-	});
-}
-
-#[test]
 fn locking_delegate_dependency_works() {
 	// set hash lock up deposit to 30%, to test deposit calculation.
 	CODE_HASH_LOCKUP_DEPOSIT_PERCENT.with(|c| *c.borrow_mut() = Perbill::from_percent(30));
@@ -3787,8 +3605,7 @@ fn locking_delegate_dependency_works() {
 
 		// Upload the delegated code.
 		let CodeUploadReturnValue { deposit, .. } =
-			Contracts::bare_upload_code(ALICE, wasm_callee.clone(), None, Determinism::Enforced)
-				.unwrap();
+			Contracts::bare_upload_code(ALICE, wasm_callee.clone(), None).unwrap();
 
 		// Instantiate should now work.
 		let addr_caller = instantiate(&lock_delegate_dependency_input).result.unwrap().account_id;
@@ -3825,7 +3642,7 @@ fn locking_delegate_dependency_works() {
 		);
 
 		// Locking more than the maximum allowed delegate_dependencies should fail.
-		Contracts::bare_upload_code(ALICE, wasm_other, None, Determinism::Enforced).unwrap();
+		Contracts::bare_upload_code(ALICE, wasm_other, None).unwrap();
 		assert_err!(
 			call(&addr_caller, &(1u32, other_code_hash)).result,
 			Error::<Test>::MaxDelegateDependenciesReached
@@ -3866,7 +3683,7 @@ fn locking_delegate_dependency_works() {
 
 		// Restore initial deposit limit and add the dependency back.
 		DEFAULT_DEPOSIT_LIMIT.with(|c| *c.borrow_mut() = 10_000_000);
-		Contracts::bare_upload_code(ALICE, wasm_callee, None, Determinism::Enforced).unwrap();
+		Contracts::bare_upload_code(ALICE, wasm_callee, None).unwrap();
 		call(&addr_caller, &lock_delegate_dependency_input).result.unwrap();
 
 		// Call terminate should work, and return the deposit.
@@ -3897,24 +3714,13 @@ fn native_dependency_deposit_works() {
 			let lockup_deposit_percent = CodeHashLockupDepositPercent::get();
 
 			// Upload the dummy contract,
-			Contracts::upload_code(
-				RuntimeOrigin::signed(ALICE),
-				dummy_wasm.clone(),
-				None,
-				Determinism::Enforced,
-			)
-			.unwrap();
+			Contracts::upload_code(RuntimeOrigin::signed(ALICE), dummy_wasm.clone(), None).unwrap();
 
 			// Upload `set_code_hash` contracts if using Code::Existing.
 			let add_upload_deposit = match code {
 				Code::Existing(_) => {
-					Contracts::upload_code(
-						RuntimeOrigin::signed(ALICE),
-						wasm.clone(),
-						None,
-						Determinism::Enforced,
-					)
-					.unwrap();
+					Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm.clone(), None)
+						.unwrap();
 					false
 				},
 				Code::Upload(_) => true,
@@ -4033,7 +3839,7 @@ fn root_cannot_upload_code() {
 
 	ExtBuilder::default().build().execute_with(|| {
 		assert_noop!(
-			Contracts::upload_code(RuntimeOrigin::root(), wasm, None, Determinism::Enforced),
+			Contracts::upload_code(RuntimeOrigin::root(), wasm, None),
 			DispatchError::BadOrigin,
 		);
 	});
@@ -4120,32 +3926,17 @@ fn only_upload_origin_can_upload() {
 		let _ = Balances::set_balance(&BOB, 1_000_000);
 
 		assert_err!(
-			Contracts::upload_code(
-				RuntimeOrigin::root(),
-				wasm.clone(),
-				None,
-				Determinism::Enforced,
-			),
+			Contracts::upload_code(RuntimeOrigin::root(), wasm.clone(), None,),
 			DispatchError::BadOrigin
 		);
 
 		assert_err!(
-			Contracts::upload_code(
-				RuntimeOrigin::signed(BOB),
-				wasm.clone(),
-				None,
-				Determinism::Enforced,
-			),
+			Contracts::upload_code(RuntimeOrigin::signed(BOB), wasm.clone(), None,),
 			DispatchError::BadOrigin
 		);
 
 		// Only alice is allowed to upload contract code.
-		assert_ok!(Contracts::upload_code(
-			RuntimeOrigin::signed(ALICE),
-			wasm.clone(),
-			None,
-			Determinism::Enforced,
-		));
+		assert_ok!(Contracts::upload_code(RuntimeOrigin::signed(ALICE), wasm.clone(), None,));
 	});
 }
 

@@ -20,8 +20,8 @@ use crate::{
 	exec::Stack,
 	storage::meter::Meter,
 	wasm::Runtime,
-	BalanceOf, Config, DebugBufferVec, Determinism, ExecReturnValue, GasMeter, Origin, Schedule,
-	TypeInfo, WasmBlob, Weight,
+	BalanceOf, Config, DebugBufferVec, ExecReturnValue, GasMeter, Origin, Schedule, TypeInfo,
+	WasmBlob, Weight,
 };
 use codec::{Encode, HasCompact};
 use core::fmt::Debug;
@@ -54,7 +54,6 @@ pub struct CallSetup<T: Config> {
 	schedule: Schedule<T>,
 	value: BalanceOf<T>,
 	debug_message: Option<DebugBufferVec<T>>,
-	determinism: Determinism,
 	data: Vec<u8>,
 }
 
@@ -101,7 +100,6 @@ where
 			schedule: T::Schedule::get(),
 			value: 0u32.into(),
 			debug_message: None,
-			determinism: Determinism::Enforced,
 			data: vec![],
 		}
 	}
@@ -156,7 +154,6 @@ where
 			&self.schedule,
 			self.value,
 			self.debug_message.as_mut(),
-			self.determinism,
 		)
 	}
 

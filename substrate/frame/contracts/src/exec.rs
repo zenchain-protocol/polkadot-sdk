@@ -21,7 +21,7 @@ use crate::{
 	primitives::{ExecReturnValue, StorageDeposit},
 	storage::{self, meter::Diff, WriteOutcome},
 	BalanceOf, CodeHash, CodeInfo, CodeInfoOf, Config, ContractInfo, ContractInfoOf,
-	DebugBufferVec, Determinism, Error, Event, Origin, Pallet as Contracts, Schedule, LOG_TARGET,
+	DebugBufferVec, Error, Event, Origin, Pallet as Contracts, Schedule, LOG_TARGET,
 };
 use frame_support::{
 	crypto::ecdsa::ECDSAExt,
@@ -420,9 +420,6 @@ pub trait Executable<T: Config>: Sized {
 
 	/// The code hash of the executable.
 	fn code_hash(&self) -> &CodeHash<T>;
-
-	/// The code does not contain any instructions which could lead to indeterminism.
-	fn is_deterministic(&self) -> bool;
 }
 
 /// The complete call stack of a contract execution.
@@ -460,8 +457,6 @@ pub struct Stack<'a, T: Config, E> {
 	/// All the bytes added to this field should be valid UTF-8. The buffer has no defined
 	/// structure and is intended to be shown to users as-is for debugging purposes.
 	debug_message: Option<&'a mut DebugBufferVec<T>>,
-	/// The determinism requirement of this call stack.
-	determinism: Determinism,
 	/// No executable is held by the struct but influences its behaviour.
 	_phantom: PhantomData<E>,
 }
@@ -669,7 +664,6 @@ where
 		value: BalanceOf<T>,
 		input_data: Vec<u8>,
 		debug_message: Option<&'a mut DebugBufferVec<T>>,
-		determinism: Determinism,
 	) -> Result<ExecReturnValue, ExecError> {
 		let (mut stack, executable) = Self::new(
 			FrameArgs::Call { dest, cached_info: None, delegated_call: None },
@@ -679,7 +673,6 @@ where
 			schedule,
 			value,
 			debug_message,
-			determinism,
 		)?;
 		stack.run(executable, input_data)
 	}
@@ -718,7 +711,6 @@ where
 			schedule,
 			value,
 			debug_message,
-			Determinism::Enforced,
 		)?;
 		let account_id = stack.top_frame().account_id.clone();
 		stack.run(executable, input_data).map(|ret| (account_id, ret))
@@ -733,7 +725,6 @@ where
 		schedule: &'a Schedule<T>,
 		value: BalanceOf<T>,
 		debug_message: Option<&'a mut DebugBufferVec<T>>,
-		determinism: Determinism,
 	) -> (Self, E) {
 		Self::new(
 			FrameArgs::Call { dest, cached_info: None, delegated_call: None },
@@ -743,7 +734,6 @@ where
 			schedule,
 			value,
 			debug_message,
-			determinism,
 		)
 		.unwrap()
 	}
@@ -757,7 +747,6 @@ where
 		schedule: &'a Schedule<T>,
 		value: BalanceOf<T>,
 		debug_message: Option<&'a mut DebugBufferVec<T>>,
-		determinism: Determinism,
 	) -> Result<(Self, E), ExecError> {
 		let (first_frame, executable) = Self::new_frame(
 			args,
@@ -766,7 +755,6 @@ where
 			Weight::zero(),
 			storage_meter,
 			BalanceOf::<T>::zero(),
-			determinism,
 			false,
 		)?;
 
@@ -780,7 +768,6 @@ where
 			first_frame,
 			frames: Default::default(),
 			debug_message,
-			determinism,
 			_phantom: Default::default(),
 		};
 
@@ -798,7 +785,6 @@ where
 		gas_limit: Weight,
 		storage_meter: &mut storage::meter::GenericMeter<T, S>,
 		deposit_limit: BalanceOf<T>,
-		determinism: Determinism,
 		read_only: bool,
 	) -> Result<(Frame<T>, E), ExecError> {
 		let (account_id, contract_info, executable, delegate_caller, entry_point) = match frame_args
@@ -834,15 +820,6 @@ where
 				(account_id, contract, executable, None, ExportedFunction::Constructor)
 			},
 		};
-
-		// `Relaxed` will only be ever set in case of off-chain execution.
-		// Instantiations are never allowed even when executing off-chain.
-		if !(executable.is_deterministic() ||
-			(matches!(determinism, Determinism::Relaxed) &&
-				matches!(entry_point, ExportedFunction::Call)))
-		{
-			return Err(Error::<T>::Indeterministic.into())
-		}
 
 		let frame = Frame {
 			delegate_caller,
@@ -893,7 +870,6 @@ where
 			gas_limit,
 			nested_storage,
 			deposit_limit,
-			self.determinism,
 			read_only,
 		)?;
 		self.frames.push(frame);
@@ -1489,9 +1465,6 @@ where
 
 	fn set_code_hash(&mut self, hash: CodeHash<Self::T>) -> DispatchResult {
 		let frame = top_frame_mut!(self);
-		if !E::from_storage(hash, &mut frame.nested_gas)?.is_deterministic() {
-			return Err(<Error<T>>::Indeterministic.into())
-		}
 
 		let info = frame.contract_info();
 
@@ -1732,10 +1705,6 @@ mod tests {
 		fn code_info(&self) -> &CodeInfo<Test> {
 			&self.code_info
 		}
-
-		fn is_deterministic(&self) -> bool {
-			true
-		}
 	}
 
 	fn exec_success() -> ExecResult {
@@ -1776,7 +1745,6 @@ mod tests {
 					value,
 					vec![],
 					None,
-					Determinism::Enforced,
 				),
 				Ok(_)
 			);
@@ -1832,7 +1800,6 @@ mod tests {
 				value,
 				vec![],
 				None,
-				Determinism::Enforced,
 			)
 			.unwrap();
 
@@ -1876,7 +1843,6 @@ mod tests {
 				value,
 				vec![],
 				None,
-				Determinism::Enforced,
 			)
 			.unwrap();
 
@@ -1914,7 +1880,6 @@ mod tests {
 				55,
 				vec![],
 				None,
-				Determinism::Enforced,
 			)
 			.unwrap();
 
@@ -1968,7 +1933,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 
 			let output = result.unwrap();
@@ -2003,7 +1967,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 
 			let output = result.unwrap();
@@ -2036,7 +1999,6 @@ mod tests {
 				0,
 				vec![1, 2, 3, 4],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2131,7 +2093,6 @@ mod tests {
 				value,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 
 			assert_matches!(result, Ok(_));
@@ -2194,7 +2155,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 
 			assert_matches!(result, Ok(_));
@@ -2230,7 +2190,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2262,7 +2221,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2292,7 +2250,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2331,7 +2288,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2361,7 +2317,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2391,7 +2346,6 @@ mod tests {
 				1,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Err(_));
 		});
@@ -2430,7 +2384,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2479,7 +2432,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 
 			assert_matches!(result, Ok(_));
@@ -2669,7 +2621,6 @@ mod tests {
 						min_balance * 10,
 						vec![],
 						None,
-						Determinism::Enforced,
 					),
 					Ok(_)
 				);
@@ -2744,7 +2695,6 @@ mod tests {
 						0,
 						vec![],
 						None,
-						Determinism::Enforced,
 					),
 					Ok(_)
 				);
@@ -2855,7 +2805,6 @@ mod tests {
 				0,
 				vec![0],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -2928,7 +2877,6 @@ mod tests {
 				0,
 				vec![],
 				Some(&mut debug_buffer),
-				Determinism::Enforced,
 			)
 			.unwrap();
 		});
@@ -2964,7 +2912,6 @@ mod tests {
 				0,
 				vec![],
 				Some(&mut debug_buffer),
-				Determinism::Enforced,
 			);
 			assert!(result.is_err());
 		});
@@ -3003,7 +2950,6 @@ mod tests {
 				0,
 				vec![],
 				Some(&mut debug_buf_after),
-				Determinism::Enforced,
 			)
 			.unwrap();
 			assert_eq!(debug_buf_before, debug_buf_after);
@@ -3039,7 +2985,6 @@ mod tests {
 				0,
 				CHARLIE.encode(),
 				None,
-				Determinism::Enforced
 			));
 
 			// Calling into oneself fails
@@ -3053,7 +2998,6 @@ mod tests {
 					0,
 					BOB.encode(),
 					None,
-					Determinism::Enforced
 				)
 				.map_err(|e| e.error),
 				<Error<Test>>::ReentranceDenied,
@@ -3104,7 +3048,6 @@ mod tests {
 					0,
 					vec![0],
 					None,
-					Determinism::Enforced
 				)
 				.map_err(|e| e.error),
 				<Error<Test>>::ReentranceDenied,
@@ -3141,7 +3084,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			)
 			.unwrap();
 
@@ -3228,7 +3170,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			)
 			.unwrap();
 
@@ -3467,7 +3408,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3595,7 +3535,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3635,7 +3574,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3675,7 +3613,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3732,7 +3669,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3789,7 +3725,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced
 			));
 		});
 	}
@@ -3825,7 +3760,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
@@ -3858,7 +3792,6 @@ mod tests {
 				0,
 				vec![],
 				None,
-				Determinism::Enforced,
 			);
 			assert_matches!(result, Ok(_));
 		});
