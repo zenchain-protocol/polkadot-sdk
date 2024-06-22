@@ -1194,11 +1194,9 @@ pub mod pallet {
 	pub(crate) type Nonce<T: Config> = StorageValue<_, u64, ValueQuery>;
 
 	/// The code associated with a given account.
-	///
-	/// TWOX-NOTE: SAFE since `AccountId` is a secure hash.
 	#[pallet::storage]
 	pub(crate) type ContractInfoOf<T: Config> =
-		StorageMap<_, Twox64Concat, T::AccountId, ContractInfo<T>>;
+		StorageMap<_, Identity, T::AccountId, ContractInfo<T>>;
 
 	/// Evicted contracts that await child trie deletion.
 	///
