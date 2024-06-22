@@ -164,12 +164,6 @@ type DebugBufferVec<T> = BoundedVec<u8, <T as Config>::MaxDebugBufferLen>;
 type EventRecordOf<T> =
 	EventRecord<<T as frame_system::Config>::RuntimeEvent, <T as frame_system::Config>::Hash>;
 
-/// The old weight type.
-///
-/// This is a copy of the [`frame_support::weights::OldWeight`] type since the contracts pallet
-/// needs to support it indefinitely.
-type OldWeight = u64;
-
 /// Used as a sentinel value when reading and writing contract memory.
 ///
 /// It is usually used to signal `None` to a contract when only a primitive is allowed
@@ -665,83 +659,178 @@ pub mod pallet {
 	where
 		<BalanceOf<T> as HasCompact>::Type: Clone + Eq + PartialEq + Debug + TypeInfo + Encode,
 	{
-		/// Deprecated version if [`Self::call`] for use in an in-storage `Call`.
+		/// Makes a call to an account, optionally transferring some balance.
+		///
+		/// # Parameters
+		///
+		/// * `dest`: Address of the contract to call.
+		/// * `value`: The balance to transfer from the `origin` to `dest`.
+		/// * `gas_limit`: The gas limit enforced when executing the constructor.
+		/// * `storage_deposit_limit`: The maximum amount of balance that can be charged from the
+		///   caller to pay for the storage consumed.
+		/// * `data`: The input data to pass to the contract.
+		///
+		/// * If the account is a smart-contract account, the associated code will be
+		/// executed and any value will be transferred.
+		/// * If the account is a regular account, any value will be transferred.
+		/// * If no account exists and the call value is not less than `existential_deposit`,
+		/// a regular account will be created and any value will be transferred.
 		#[pallet::call_index(0)]
-		#[pallet::weight(T::WeightInfo::call().saturating_add(<Pallet<T>>::compat_weight_limit(*gas_limit)))]
-		#[allow(deprecated)]
-		#[deprecated(note = "1D weight is used in this extrinsic, please migrate to `call`")]
-		pub fn call_old_weight(
+		#[pallet::weight(T::WeightInfo::call().saturating_add(*gas_limit))]
+		pub fn call(
 			origin: OriginFor<T>,
 			dest: AccountIdLookupOf<T>,
 			#[pallet::compact] value: BalanceOf<T>,
-			#[pallet::compact] gas_limit: OldWeight,
+			gas_limit: Weight,
 			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
 			data: Vec<u8>,
 		) -> DispatchResultWithPostInfo {
-			Self::call(
-				origin,
-				dest,
+			Migration::<T>::ensure_migrated()?;
+			let common = CommonInput {
+				origin: Origin::from_runtime_origin(origin)?,
 				value,
-				<Pallet<T>>::compat_weight_limit(gas_limit),
-				storage_deposit_limit,
 				data,
-			)
+				gas_limit: gas_limit.into(),
+				storage_deposit_limit: storage_deposit_limit.map(Into::into),
+				debug_message: None,
+			};
+			let dest = T::Lookup::lookup(dest)?;
+			let mut output =
+				CallInput::<T> { dest, determinism: Determinism::Enforced }.run_guarded(common);
+			if let Ok(retval) = &output.result {
+				if retval.did_revert() {
+					output.result = Err(<Error<T>>::ContractReverted.into());
+				}
+			}
+			output.gas_meter.into_dispatch_result(output.result, T::WeightInfo::call())
 		}
 
-		/// Deprecated version if [`Self::instantiate_with_code`] for use in an in-storage `Call`.
+		/// Instantiates a contract from a previously deployed wasm binary.
+		///
+		/// This function is identical to [`Self::instantiate_with_code`] but without the
+		/// code deployment step. Instead, the `code_hash` of an on-chain deployed wasm binary
+		/// must be supplied.
 		#[pallet::call_index(1)]
 		#[pallet::weight(
-			T::WeightInfo::instantiate_with_code(code.len() as u32, data.len() as u32, salt.len() as u32)
-			.saturating_add(<Pallet<T>>::compat_weight_limit(*gas_limit))
+			T::WeightInfo::instantiate(data.len() as u32, salt.len() as u32).saturating_add(*gas_limit)
 		)]
-		#[allow(deprecated)]
-		#[deprecated(
-			note = "1D weight is used in this extrinsic, please migrate to `instantiate_with_code`"
-		)]
-		pub fn instantiate_with_code_old_weight(
+		pub fn instantiate(
 			origin: OriginFor<T>,
 			#[pallet::compact] value: BalanceOf<T>,
-			#[pallet::compact] gas_limit: OldWeight,
-			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
-			code: Vec<u8>,
-			data: Vec<u8>,
-			salt: Vec<u8>,
-		) -> DispatchResultWithPostInfo {
-			Self::instantiate_with_code(
-				origin,
-				value,
-				<Pallet<T>>::compat_weight_limit(gas_limit),
-				storage_deposit_limit,
-				code,
-				data,
-				salt,
-			)
-		}
-
-		/// Deprecated version if [`Self::instantiate`] for use in an in-storage `Call`.
-		#[pallet::call_index(2)]
-		#[pallet::weight(
-			T::WeightInfo::instantiate(data.len() as u32, salt.len() as u32).saturating_add(<Pallet<T>>::compat_weight_limit(*gas_limit))
-		)]
-		#[allow(deprecated)]
-		#[deprecated(note = "1D weight is used in this extrinsic, please migrate to `instantiate`")]
-		pub fn instantiate_old_weight(
-			origin: OriginFor<T>,
-			#[pallet::compact] value: BalanceOf<T>,
-			#[pallet::compact] gas_limit: OldWeight,
+			gas_limit: Weight,
 			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
 			code_hash: CodeHash<T>,
 			data: Vec<u8>,
 			salt: Vec<u8>,
 		) -> DispatchResultWithPostInfo {
-			Self::instantiate(
-				origin,
+			Migration::<T>::ensure_migrated()?;
+			let origin = T::InstantiateOrigin::ensure_origin(origin)?;
+			let data_len = data.len() as u32;
+			let salt_len = salt.len() as u32;
+			let common = CommonInput {
+				origin: Origin::from_account_id(origin),
 				value,
-				<Pallet<T>>::compat_weight_limit(gas_limit),
-				storage_deposit_limit,
-				code_hash,
 				data,
-				salt,
+				gas_limit,
+				storage_deposit_limit: storage_deposit_limit.map(Into::into),
+				debug_message: None,
+			};
+			let mut output = InstantiateInput::<T> { code: WasmCode::CodeHash(code_hash), salt }
+				.run_guarded(common);
+			if let Ok(retval) = &output.result {
+				if retval.1.did_revert() {
+					output.result = Err(<Error<T>>::ContractReverted.into());
+				}
+			}
+			output.gas_meter.into_dispatch_result(
+				output.result.map(|(_address, output)| output),
+				T::WeightInfo::instantiate(data_len, salt_len),
+			)
+		}
+
+		/// Instantiates a new contract from the supplied `code` optionally transferring
+		/// some balance.
+		///
+		/// This dispatchable has the same effect as calling [`Self::upload_code`] +
+		/// [`Self::instantiate`]. Bundling them together provides efficiency gains. Please
+		/// also check the documentation of [`Self::upload_code`].
+		///
+		/// # Parameters
+		///
+		/// * `value`: The balance to transfer from the `origin` to the newly created contract.
+		/// * `gas_limit`: The gas limit enforced when executing the constructor.
+		/// * `storage_deposit_limit`: The maximum amount of balance that can be charged/reserved
+		///   from the caller to pay for the storage consumed.
+		/// * `code`: The contract code to deploy in raw bytes.
+		/// * `data`: The input data to pass to the contract constructor.
+		/// * `salt`: Used for the address derivation. See [`Pallet::contract_address`].
+		///
+		/// Instantiation is executed as follows:
+		///
+		/// - The supplied `code` is deployed, and a `code_hash` is created for that code.
+		/// - If the `code_hash` already exists on the chain the underlying `code` will be shared.
+		/// - The destination address is computed based on the sender, code_hash and the salt.
+		/// - The smart-contract account is created at the computed address.
+		/// - The `value` is transferred to the new account.
+		/// - The `deploy` function is executed in the context of the newly-created account.
+		#[pallet::call_index(2)]
+		#[pallet::weight(
+			T::WeightInfo::instantiate_with_code(code.len() as u32, data.len() as u32, salt.len() as u32)
+			.saturating_add(*gas_limit)
+		)]
+		pub fn instantiate_with_code(
+			origin: OriginFor<T>,
+			#[pallet::compact] value: BalanceOf<T>,
+			gas_limit: Weight,
+			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
+			code: Vec<u8>,
+			data: Vec<u8>,
+			salt: Vec<u8>,
+		) -> DispatchResultWithPostInfo {
+			Migration::<T>::ensure_migrated()?;
+
+			// These two origins will usually be the same; however, we treat them as separate since
+			// it is possible for the `Success` value of `UploadOrigin` and `InstantiateOrigin` to
+			// differ.
+			let upload_origin = T::UploadOrigin::ensure_origin(origin.clone())?;
+			let instantiate_origin = T::InstantiateOrigin::ensure_origin(origin)?;
+
+			let code_len = code.len() as u32;
+
+			let (module, upload_deposit) = Self::try_upload_code(
+				upload_origin,
+				code,
+				storage_deposit_limit.clone().map(Into::into),
+				Determinism::Enforced,
+				None,
+			)?;
+
+			// Reduces the storage deposit limit by the amount that was reserved for the upload.
+			let storage_deposit_limit =
+				storage_deposit_limit.map(|limit| limit.into().saturating_sub(upload_deposit));
+
+			let data_len = data.len() as u32;
+			let salt_len = salt.len() as u32;
+			let common = CommonInput {
+				origin: Origin::from_account_id(instantiate_origin),
+				value,
+				data,
+				gas_limit,
+				storage_deposit_limit,
+				debug_message: None,
+			};
+
+			let mut output =
+				InstantiateInput::<T> { code: WasmCode::Wasm(module), salt }.run_guarded(common);
+			if let Ok(retval) = &output.result {
+				if retval.1.did_revert() {
+					output.result = Err(<Error<T>>::ContractReverted.into());
+				}
+			}
+
+			output.gas_meter.into_dispatch_result(
+				output.result.map(|(_address, output)| output),
+				T::WeightInfo::instantiate_with_code(code_len, data_len, salt_len),
 			)
 		}
 
@@ -843,186 +932,11 @@ pub mod pallet {
 			})
 		}
 
-		/// Makes a call to an account, optionally transferring some balance.
-		///
-		/// # Parameters
-		///
-		/// * `dest`: Address of the contract to call.
-		/// * `value`: The balance to transfer from the `origin` to `dest`.
-		/// * `gas_limit`: The gas limit enforced when executing the constructor.
-		/// * `storage_deposit_limit`: The maximum amount of balance that can be charged from the
-		///   caller to pay for the storage consumed.
-		/// * `data`: The input data to pass to the contract.
-		///
-		/// * If the account is a smart-contract account, the associated code will be
-		/// executed and any value will be transferred.
-		/// * If the account is a regular account, any value will be transferred.
-		/// * If no account exists and the call value is not less than `existential_deposit`,
-		/// a regular account will be created and any value will be transferred.
-		#[pallet::call_index(6)]
-		#[pallet::weight(T::WeightInfo::call().saturating_add(*gas_limit))]
-		pub fn call(
-			origin: OriginFor<T>,
-			dest: AccountIdLookupOf<T>,
-			#[pallet::compact] value: BalanceOf<T>,
-			gas_limit: Weight,
-			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
-			data: Vec<u8>,
-		) -> DispatchResultWithPostInfo {
-			Migration::<T>::ensure_migrated()?;
-			let common = CommonInput {
-				origin: Origin::from_runtime_origin(origin)?,
-				value,
-				data,
-				gas_limit: gas_limit.into(),
-				storage_deposit_limit: storage_deposit_limit.map(Into::into),
-				debug_message: None,
-			};
-			let dest = T::Lookup::lookup(dest)?;
-			let mut output =
-				CallInput::<T> { dest, determinism: Determinism::Enforced }.run_guarded(common);
-			if let Ok(retval) = &output.result {
-				if retval.did_revert() {
-					output.result = Err(<Error<T>>::ContractReverted.into());
-				}
-			}
-			output.gas_meter.into_dispatch_result(output.result, T::WeightInfo::call())
-		}
-
-		/// Instantiates a new contract from the supplied `code` optionally transferring
-		/// some balance.
-		///
-		/// This dispatchable has the same effect as calling [`Self::upload_code`] +
-		/// [`Self::instantiate`]. Bundling them together provides efficiency gains. Please
-		/// also check the documentation of [`Self::upload_code`].
-		///
-		/// # Parameters
-		///
-		/// * `value`: The balance to transfer from the `origin` to the newly created contract.
-		/// * `gas_limit`: The gas limit enforced when executing the constructor.
-		/// * `storage_deposit_limit`: The maximum amount of balance that can be charged/reserved
-		///   from the caller to pay for the storage consumed.
-		/// * `code`: The contract code to deploy in raw bytes.
-		/// * `data`: The input data to pass to the contract constructor.
-		/// * `salt`: Used for the address derivation. See [`Pallet::contract_address`].
-		///
-		/// Instantiation is executed as follows:
-		///
-		/// - The supplied `code` is deployed, and a `code_hash` is created for that code.
-		/// - If the `code_hash` already exists on the chain the underlying `code` will be shared.
-		/// - The destination address is computed based on the sender, code_hash and the salt.
-		/// - The smart-contract account is created at the computed address.
-		/// - The `value` is transferred to the new account.
-		/// - The `deploy` function is executed in the context of the newly-created account.
-		#[pallet::call_index(7)]
-		#[pallet::weight(
-			T::WeightInfo::instantiate_with_code(code.len() as u32, data.len() as u32, salt.len() as u32)
-			.saturating_add(*gas_limit)
-		)]
-		pub fn instantiate_with_code(
-			origin: OriginFor<T>,
-			#[pallet::compact] value: BalanceOf<T>,
-			gas_limit: Weight,
-			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
-			code: Vec<u8>,
-			data: Vec<u8>,
-			salt: Vec<u8>,
-		) -> DispatchResultWithPostInfo {
-			Migration::<T>::ensure_migrated()?;
-
-			// These two origins will usually be the same; however, we treat them as separate since
-			// it is possible for the `Success` value of `UploadOrigin` and `InstantiateOrigin` to
-			// differ.
-			let upload_origin = T::UploadOrigin::ensure_origin(origin.clone())?;
-			let instantiate_origin = T::InstantiateOrigin::ensure_origin(origin)?;
-
-			let code_len = code.len() as u32;
-
-			let (module, upload_deposit) = Self::try_upload_code(
-				upload_origin,
-				code,
-				storage_deposit_limit.clone().map(Into::into),
-				Determinism::Enforced,
-				None,
-			)?;
-
-			// Reduces the storage deposit limit by the amount that was reserved for the upload.
-			let storage_deposit_limit =
-				storage_deposit_limit.map(|limit| limit.into().saturating_sub(upload_deposit));
-
-			let data_len = data.len() as u32;
-			let salt_len = salt.len() as u32;
-			let common = CommonInput {
-				origin: Origin::from_account_id(instantiate_origin),
-				value,
-				data,
-				gas_limit,
-				storage_deposit_limit,
-				debug_message: None,
-			};
-
-			let mut output =
-				InstantiateInput::<T> { code: WasmCode::Wasm(module), salt }.run_guarded(common);
-			if let Ok(retval) = &output.result {
-				if retval.1.did_revert() {
-					output.result = Err(<Error<T>>::ContractReverted.into());
-				}
-			}
-
-			output.gas_meter.into_dispatch_result(
-				output.result.map(|(_address, output)| output),
-				T::WeightInfo::instantiate_with_code(code_len, data_len, salt_len),
-			)
-		}
-
-		/// Instantiates a contract from a previously deployed wasm binary.
-		///
-		/// This function is identical to [`Self::instantiate_with_code`] but without the
-		/// code deployment step. Instead, the `code_hash` of an on-chain deployed wasm binary
-		/// must be supplied.
-		#[pallet::call_index(8)]
-		#[pallet::weight(
-			T::WeightInfo::instantiate(data.len() as u32, salt.len() as u32).saturating_add(*gas_limit)
-		)]
-		pub fn instantiate(
-			origin: OriginFor<T>,
-			#[pallet::compact] value: BalanceOf<T>,
-			gas_limit: Weight,
-			storage_deposit_limit: Option<<BalanceOf<T> as codec::HasCompact>::Type>,
-			code_hash: CodeHash<T>,
-			data: Vec<u8>,
-			salt: Vec<u8>,
-		) -> DispatchResultWithPostInfo {
-			Migration::<T>::ensure_migrated()?;
-			let origin = T::InstantiateOrigin::ensure_origin(origin)?;
-			let data_len = data.len() as u32;
-			let salt_len = salt.len() as u32;
-			let common = CommonInput {
-				origin: Origin::from_account_id(origin),
-				value,
-				data,
-				gas_limit,
-				storage_deposit_limit: storage_deposit_limit.map(Into::into),
-				debug_message: None,
-			};
-			let mut output = InstantiateInput::<T> { code: WasmCode::CodeHash(code_hash), salt }
-				.run_guarded(common);
-			if let Ok(retval) = &output.result {
-				if retval.1.did_revert() {
-					output.result = Err(<Error<T>>::ContractReverted.into());
-				}
-			}
-			output.gas_meter.into_dispatch_result(
-				output.result.map(|(_address, output)| output),
-				T::WeightInfo::instantiate(data_len, salt_len),
-			)
-		}
-
 		/// When a migration is in progress, this dispatchable can be used to run migration steps.
 		/// Calls that contribute to advancing the migration have their fees waived, as it's helpful
 		/// for the chain. Note that while the migration is in progress, the pallet will also
 		/// leverage the `on_idle` hooks to run migration steps.
-		#[pallet::call_index(9)]
+		#[pallet::call_index(6)]
 		#[pallet::weight(T::WeightInfo::migrate().saturating_add(*weight_limit))]
 		pub fn migrate(origin: OriginFor<T>, weight_limit: Weight) -> DispatchResultWithPostInfo {
 			use migration::MigrateResult::*;
@@ -1842,14 +1756,6 @@ impl<T: Config> Pallet<T> {
 	/// Return the existential deposit of [`Config::Currency`].
 	fn min_balance() -> BalanceOf<T> {
 		<T::Currency as Inspect<AccountIdOf<T>>>::minimum_balance()
-	}
-
-	/// Convert gas_limit from 1D Weight to a 2D Weight.
-	///
-	/// Used by backwards compatible extrinsics. We cannot just set the proof_size weight limit to
-	/// zero or an old `Call` will just fail with OutOfGas.
-	fn compat_weight_limit(gas_limit: OldWeight) -> Weight {
-		Weight::from_parts(gas_limit, u64::from(T::MaxCodeLen::get()) * 2)
 	}
 }
 
